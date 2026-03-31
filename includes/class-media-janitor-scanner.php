@@ -672,7 +672,8 @@ class Media_Janitor_Scanner {
              FROM {$this->db->postmeta} pm
              INNER JOIN {$this->db->posts} p ON p.ID = pm.post_id
              WHERE pm.meta_key = '_elementor_data'
-             AND pm.meta_value != ''"
+             AND pm.meta_value != ''
+             AND p.post_status NOT IN ('auto-draft','trash')"
         );
 
         $attachments   = $this->get_all_attachments();
@@ -680,8 +681,20 @@ class Media_Janitor_Scanner {
         $url_fragments = array();
         foreach ( $attachments as $att ) {
             $file = get_post_meta( $att->ID, '_wp_attached_file', true );
-            if ( $file ) {
-                $url_fragments[ $file ] = (int) $att->ID;
+            if ( ! $file ) {
+                continue;
+            }
+            $url_fragments[ $file ] = (int) $att->ID;
+
+            // Also map every thumbnail size so Elementor's resized image URLs
+            // (e.g. photo-1024x768.jpg) are caught, not just the original.
+            $meta = wp_get_attachment_metadata( $att->ID );
+            if ( ! empty( $meta['sizes'] ) ) {
+                $dir = dirname( $file );
+                foreach ( $meta['sizes'] as $size ) {
+                    $sized_path = ( '.' === $dir ) ? $size['file'] : $dir . '/' . $size['file'];
+                    $url_fragments[ $sized_path ] = (int) $att->ID;
+                }
             }
         }
 
@@ -752,16 +765,32 @@ class Media_Janitor_Scanner {
      * ----------------------------------------------------------------*/
 
     /**
-     * Get the canonical public URL for a post.
+     * Get the canonical URL for a post.
      *
-     * get_permalink() during AJAX can return ?p=ID for the static front page
-     * because the rewrite object may not be fully initialised. This helper
-     * returns home_url('/') for the front-page post instead.
+     * - Returns home_url('/') for the static front page (get_permalink() can
+     *   return ?p=ID during AJAX because rewrites aren't initialised).
+     * - Returns the admin edit URL for non-public post types (e.g. Elementor
+     *   templates / elementor_library) so "Find on page" is suppressed in the
+     *   modal rather than opening a 404.
+     * - Returns the normal permalink for everything else.
      */
     private function get_post_url( int $post_id ): string {
         if ( 'page' === get_option( 'show_on_front' ) && (int) get_option( 'page_on_front' ) === $post_id ) {
             return home_url( '/' );
         }
+
+        $post = get_post( $post_id );
+        if ( ! $post ) {
+            return '';
+        }
+
+        $pto = get_post_type_object( $post->post_type );
+        if ( ! $pto || ! $pto->public ) {
+            // Non-public: link to the admin editor — the modal will show the
+            // link but the isAdmin check will suppress "Find on page".
+            return admin_url( 'post.php?post=' . $post_id . '&action=edit' );
+        }
+
         return get_permalink( $post_id ) ?: '';
     }
 
