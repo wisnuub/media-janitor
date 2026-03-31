@@ -2,18 +2,76 @@
  * Media Janitor — Admin Styles
  */
 
+:root {
+    --mj-accent:       #FF2462;
+    --mj-accent-dark:  #d4184f;
+    --mj-accent-light: #fff0f4;
+    --mj-accent-muted: rgba(255,36,98,.12);
+    --mj-border:       #e2e4e7;
+    --mj-bg:           #f6f7f7;
+    --mj-radius:       10px;
+    --mj-shadow:       0 1px 4px rgba(0,0,0,.07);
+}
+
 /* ----------------------------------------------------------------
  *  Layout
  * ----------------------------------------------------------------*/
 
 .mj-wrap {
-    max-width: 1400px;
+    max-width: 980px;
 }
 
-.mj-header {
+/* ----------------------------------------------------------------
+ *  Banner
+ * ----------------------------------------------------------------*/
+
+.mj-banner {
+    position: relative;
+    background: linear-gradient(120deg, #1a1a2e 0%, #16213e 60%, #0f3460 100%);
+    border-radius: var(--mj-radius);
+    overflow: hidden;
+    margin-bottom: 24px;
+    min-height: 100px;
     display: flex;
     align-items: center;
-    margin-bottom: 20px;
+}
+
+.mj-banner-inner {
+    display: flex;
+    align-items: center;
+    padding: 0 32px;
+    gap: 16px;
+    width: 100%;
+}
+
+.mj-banner-icon {
+    font-size: 36px;
+    line-height: 1;
+}
+
+.mj-banner-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: -0.3px;
+}
+
+.mj-banner-sub {
+    font-size: 13px;
+    color: rgba(255,255,255,.65);
+    margin-top: 2px;
+}
+
+.mj-version-badge {
+    margin-left: auto;
+    background: var(--mj-accent);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 20px;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
 }
 
 /* ----------------------------------------------------------------
@@ -36,7 +94,7 @@
     border-top: 4px solid #ddd;
 }
 
-.mj-card--total  { border-top-color: #2271b1; }
+.mj-card--total  { border-top-color: var(--mj-accent); }
 .mj-card--used   { border-top-color: #00a32a; }
 .mj-card--unused { border-top-color: #d63638; }
 .mj-card--size   { border-top-color: #dba617; }
@@ -68,7 +126,7 @@
 .mj-scan-status {
     font-size: 14px;
     font-weight: 500;
-    color: #2271b1;
+    color: var(--mj-accent);
 }
 
 .mj-last-scan {
@@ -93,7 +151,7 @@
 
 .mj-progress__fill {
     height: 100%;
-    background: linear-gradient(90deg, #2271b1, #135e96);
+    background: linear-gradient(90deg, var(--mj-accent), var(--mj-accent-dark));
     border-radius: 12px;
     width: 0;
     transition: width 0.4s ease;
@@ -133,12 +191,12 @@
 }
 
 .mj-tab:hover {
-    color: #2271b1;
+    color: var(--mj-accent);
 }
 
 .mj-tab--active {
     color: #1d2327;
-    border-bottom-color: #2271b1;
+    border-bottom-color: var(--mj-accent);
     font-weight: 600;
 }
 
@@ -152,7 +210,7 @@
 }
 
 .mj-tab--active .mj-tab__count {
-    background: #2271b1;
+    background: var(--mj-accent);
     color: #fff;
 }
 
@@ -210,8 +268,8 @@
 }
 
 .mj-item--selected {
-    border-color: #2271b1;
-    box-shadow: 0 0 0 1px #2271b1;
+    border-color: var(--mj-accent);
+    box-shadow: 0 0 0 1px var(--mj-accent);
 }
 
 .mj-item__check {
@@ -295,7 +353,7 @@
 .mj-item__usage-btn {
     background: none;
     border: none;
-    color: #2271b1;
+    color: var(--mj-accent);
     cursor: pointer;
     font-size: 12px;
     padding: 2px 4px;
@@ -303,7 +361,7 @@
 }
 
 .mj-item__usage-btn:hover {
-    color: #135e96;
+    color: var(--mj-accent-dark);
 }
 
 /* ----------------------------------------------------------------
@@ -334,9 +392,9 @@
 }
 
 .mj-pagination button.mj-page--active {
-    background: #2271b1;
+    background: var(--mj-accent);
     color: #fff;
-    border-color: #2271b1;
+    border-color: var(--mj-accent);
 }
 
 .mj-pagination button:disabled {
@@ -472,7 +530,7 @@
 }
 
 .mj-usage-label a {
-    color: #2271b1;
+    color: var(--mj-accent);
     text-decoration: none;
 }
 
@@ -496,7 +554,7 @@
     padding: 2px 8px;
     font-size: 11px;
     font-weight: 600;
-    color: #2271b1 !important;
+    color: var(--mj-accent) !important;
     text-decoration: none !important;
     white-space: nowrap;
     transition: background 0.2s, border-color 0.2s;
@@ -504,7 +562,7 @@
 
 .mj-find-btn:hover {
     background: #dce8f5;
-    border-color: #2271b1;
+    border-color: var(--mj-accent);
 }
 
 /* ----------------------------------------------------------------

@@ -86,10 +86,18 @@ class Media_Janitor_Admin {
     public function render_page(): void {
         ?>
         <div class="wrap mj-wrap">
-            <h1 class="mj-header">
-                <span class="dashicons dashicons-broom" style="font-size:28px;margin-right:8px;"></span>
-                <?php esc_html_e( 'Media Janitor', 'media-janitor' ); ?>
-            </h1>
+
+            <!-- Banner -->
+            <div class="mj-banner">
+                <div class="mj-banner-inner">
+                    <span class="mj-banner-icon">🧹</span>
+                    <div>
+                        <div class="mj-banner-title"><?php esc_html_e( 'Media Janitor', 'media-janitor' ); ?></div>
+                        <div class="mj-banner-sub"><?php esc_html_e( 'Scan, audit, and clean up unused media files from your library', 'media-janitor' ); ?></div>
+                    </div>
+                    <span class="mj-version-badge">v<?php echo esc_html( JEJEKIN_MJ_VERSION ); ?></span>
+                </div>
+            </div>
 
             <!-- Summary Cards -->
             <div id="mj-summary" class="mj-summary" style="display:none;">
