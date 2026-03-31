@@ -35,8 +35,11 @@
         });
 
         // Show a single fixed nav bar and scroll to the first match.
-        showNavBar(matches, 0);
+        showNavBar(matches, 0, filename);
         scrollToElement(matches[0]);
+
+        // Watch for new elements added by Load More buttons (e.g. Elementor gallery).
+        observeNewMatches(filename, matches);
     });
 
     /* ----------------------------------------------------------------
@@ -132,11 +135,13 @@
     var currentIndex = 0;
     var navBar       = null;
 
-    function showNavBar(matches, startIndex) {
+    function showNavBar(matches, startIndex, filenameLabel) {
         currentIndex = startIndex;
 
         navBar = document.createElement('div');
         navBar.className = 'mj-highlight-banner mj-highlight-nav-bar';
+
+        var bare = (filenameLabel || '').replace(/^.*[/\\]/, '');
 
         function render() {
             var total = matches.length;
@@ -146,6 +151,7 @@
                 '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>' +
                 '</svg>' +
                 'Media Janitor</span>' +
+                (bare ? '<span class="mj-hl-filename" title="' + bare + '">' + bare + '</span>' : '') +
                 '<span class="mj-hl-counter">Match ' + (currentIndex + 1) + ' of ' + total + '</span>' +
                 (total > 1
                     ? '<button class="mj-hl-btn" id="mj-hl-prev">&larr; Prev</button>' +
@@ -181,6 +187,65 @@
 
         render();
         document.body.appendChild(navBar);
+    }
+
+    /* ----------------------------------------------------------------
+     *  MutationObserver — catch elements added by Load More buttons
+     *  (Elementor gallery, WooCommerce, etc.)
+     * ----------------------------------------------------------------*/
+
+    function observeNewMatches(filename, matchList) {
+        if (!window.MutationObserver) return;
+
+        var bare   = filename.replace(/^.*[/\\]/, '');
+        var noSize = bare.replace(/-\d+x\d+(\.\w+)$/, '$1');
+        var seen   = new Set(matchList);
+
+        var observer = new MutationObserver(function (mutations) {
+            var newMatches = [];
+
+            mutations.forEach(function (mutation) {
+                mutation.addedNodes.forEach(function (node) {
+                    if (node.nodeType !== 1) return; // elements only
+
+                    // Check the node itself and all descendants.
+                    var candidates = [node].concat(Array.prototype.slice.call(node.querySelectorAll('img, video, audio, a[href], iframe[src]')));
+
+                    candidates.forEach(function (el) {
+                        if (seen.has(el)) return;
+                        var url = el.src || el.href || el.getAttribute('data') || '';
+                        var srcset = el.srcset || '';
+                        if (matchesUrl(url, bare, noSize) || matchesSrcset(srcset, bare, noSize)) {
+                            seen.add(el);
+                            newMatches.push(el);
+                        }
+                    });
+                });
+            });
+
+            if (!newMatches.length) return;
+
+            // Highlight newly found elements and update the nav bar.
+            newMatches.forEach(function (el) {
+                addHighlightBorder(el);
+                matchList.push(el);
+            });
+
+            // Re-render the nav bar with the updated total.
+            if (navBar) {
+                // Re-invoke render by replacing the navBar.
+                var parent = navBar.parentElement;
+                if (parent) {
+                    navBar.remove();
+                    showNavBar(matchList, currentIndex, filename);
+                }
+            }
+        });
+
+        observer.observe(document.body, { childList: true, subtree: true });
+
+        // Stop observing after 60 s to avoid memory leaks.
+        setTimeout(function () { observer.disconnect(); }, 60000);
     }
 
     /* ----------------------------------------------------------------
@@ -245,6 +310,7 @@
             '  box-shadow:0 2px 8px rgba(0,0,0,.25);' +
             '}' +
             '.mj-hl-icon { font-weight:600; color:#FF2462; }' +
+            '.mj-hl-filename { font-size:12px; color:rgba(255,255,255,.65); max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }' +
             '.mj-hl-counter { font-weight:700; }' +
             '.mj-hl-btn {' +
             '  background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);' +

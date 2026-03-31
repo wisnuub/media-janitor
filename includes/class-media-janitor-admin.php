@@ -122,7 +122,7 @@ class Media_Janitor_Admin {
             <!-- Scan button area -->
             <div class="mj-actions">
                 <button id="mj-scan-btn" class="button button-primary button-hero">
-                    <span class="dashicons dashicons-search" style="margin-top:4px;margin-right:4px;"></span>
+                    <span class="dashicons dashicons-search"></span>
                     <?php esc_html_e( 'Scan Media Library', 'media-janitor' ); ?>
                 </button>
                 <span id="mj-scan-status" class="mj-scan-status"></span>
@@ -193,6 +193,9 @@ class Media_Janitor_Admin {
 
                 <!-- Media grid -->
                 <div id="mj-grid" class="mj-grid"></div>
+
+                <!-- Empty / loading state (rendered outside the grid) -->
+                <div id="mj-empty-state" class="mj-empty" style="display:none;"></div>
 
                 <!-- Pagination -->
                 <div id="mj-pagination" class="mj-pagination"></div>

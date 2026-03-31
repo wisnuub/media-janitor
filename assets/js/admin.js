@@ -14,7 +14,7 @@
         summary: null,
     };
 
-    var $grid, $pagination, $summary, $results, $progress;
+    var $grid, $emptyState, $pagination, $summary, $results, $progress;
 
     /* ----------------------------------------------------------------
      *  Init
@@ -22,6 +22,7 @@
 
     $(function () {
         $grid       = $('#mj-grid');
+        $emptyState = $('#mj-empty-state');
         $pagination = $('#mj-pagination');
         $summary    = $('#mj-summary');
         $results    = $('#mj-results');
@@ -177,7 +178,8 @@
 
     function loadResults() {
         $results.show();
-        $grid.html('<div class="mj-empty"><span class="spinner is-active" style="float:none;"></span></div>');
+        $grid.html('');
+        $emptyState.html('<span class="spinner is-active" style="float:none;"></span>').show();
 
         $.post(mjData.ajaxUrl, {
             action:   'mj_results',
@@ -217,13 +219,14 @@
     }
 
     function renderGrid(items) {
+        $emptyState.hide().html('');
+
         if (!items.length) {
-            $grid.html(
-                '<div class="mj-empty">' +
+            $grid.html('');
+            $emptyState.html(
                 '<span class="dashicons dashicons-yes-alt"></span>' +
-                '<p>' + mjData.i18n.noUnused + '</p>' +
-                '</div>'
-            );
+                '<p>' + mjData.i18n.noUnused + '</p>'
+            ).show();
             return;
         }
 

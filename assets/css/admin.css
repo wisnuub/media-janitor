@@ -123,6 +123,16 @@
     margin-bottom: 24px;
 }
 
+#mj-scan-btn {
+    display: flex;
+    align-items: center;
+}
+
+#mj-scan-btn .dashicons-search {
+    margin-top: 0;
+    margin-right: 7px;
+}
+
 .mj-scan-status {
     font-size: 14px;
     font-weight: 500;
