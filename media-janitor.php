@@ -3,7 +3,7 @@
  * Plugin Name: Media Janitor
  * Plugin URI:  https://github.com/wisnuub/media-janitor
  * Description: Find and safely remove unused media files. Scans all pages, posts, widgets, theme settings, and page builders to identify where each media file is used — so you can clean up with confidence.
- * Version:     1.0.0
+ * Version:     1.0
  * Author:      Wisnu
  * Author URI:  https://github.com/wisnuub
  * License:     GPL-2.0-or-later
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'JEJEKIN_MJ_VERSION', '1.0.0' );
+define( 'JEJEKIN_MJ_VERSION', '1.0' );
 define( 'JEJEKIN_MJ_FILE', __FILE__ );
 define( 'JEJEKIN_MJ_DIR', plugin_dir_path( __FILE__ ) );
 define( 'JEJEKIN_MJ_URL', plugin_dir_url( __FILE__ ) );
@@ -81,7 +81,7 @@ function jejekin_mj_activate() {
     require_once ABSPATH . 'wp-admin/includes/upgrade.php';
     dbDelta( $sql );
 
-    update_option( 'mj_db_version', '1.0.0' );
+    update_option( 'mj_db_version', '1.0' );
     update_option( 'mj_last_scan', 0 );
 }
 register_activation_hook( __FILE__, 'jejekin_mj_activate' );
