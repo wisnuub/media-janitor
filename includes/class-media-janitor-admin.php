@@ -61,12 +61,25 @@ class Media_Janitor_Admin {
             true
         );
 
+        $last_scan = (int) get_option( 'mj_last_scan', 0 );
+        $new_since = 0;
+        if ( $last_scan > 0 ) {
+            global $wpdb;
+            $new_since = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->posts}
+                 WHERE post_type = 'attachment' AND post_status = 'inherit'
+                 AND post_date_gmt > %s",
+                gmdate( 'Y-m-d H:i:s', $last_scan )
+            ) );
+        }
+
         wp_localize_script( 'media-janitor-admin', 'mjData', array(
-            'ajaxUrl'     => admin_url( 'admin-ajax.php' ),
-            'nonceScan'   => wp_create_nonce( 'mj_scan' ),
-            'nonceResults'=> wp_create_nonce( 'mj_results' ),
-            'nonceDelete' => wp_create_nonce( 'mj_delete' ),
-            'lastScan'    => (int) get_option( 'mj_last_scan', 0 ),
+            'ajaxUrl'          => admin_url( 'admin-ajax.php' ),
+            'nonceScan'        => wp_create_nonce( 'mj_scan' ),
+            'nonceResults'     => wp_create_nonce( 'mj_results' ),
+            'nonceDelete'      => wp_create_nonce( 'mj_delete' ),
+            'lastScan'         => $last_scan,
+            'newSinceLastScan' => $new_since,
             'i18n'        => array(
                 'scanning'       => __( 'Scanning…', 'media-janitor' ),
                 'scanComplete'   => __( 'Scan complete!', 'media-janitor' ),

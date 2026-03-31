@@ -134,16 +134,46 @@ class Media_Janitor_Scanner {
             $attachment_id
         ) );
 
-        $usage = array();
+        // Type priority: lower number = shown over higher when same source_id conflicts.
+        $priority = array(
+            'elementor'      => 0,
+            'featured_image' => 1,
+            'woo_gallery'    => 2,
+        );
+        $get_priority = function ( string $type ) use ( $priority ): int {
+            return $priority[ $type ] ?? 10;
+        };
+
+        // Group post-backed entries by source_id; source_id=0 (widgets, options, etc.) are kept as-is.
+        $by_source_id = array();
+        $zero_source  = array();
+
         foreach ( $rows as $row ) {
-            // Skip entries whose source post has since been trashed or deleted.
             $source_id = (int) $row->source_id;
+
+            // Skip trashed / deleted source posts.
             if ( $source_id > 0 ) {
                 $status = get_post_status( $source_id );
                 if ( ! $status || 'trash' === $status ) {
                     continue;
                 }
             }
+
+            if ( $source_id === 0 ) {
+                $zero_source[] = $row;
+            } elseif ( ! isset( $by_source_id[ $source_id ] ) ) {
+                $by_source_id[ $source_id ] = $row;
+            } else {
+                // Keep the entry with the better (lower) priority type.
+                $existing = $by_source_id[ $source_id ];
+                if ( $get_priority( $row->source_type ) < $get_priority( $existing->source_type ) ) {
+                    $by_source_id[ $source_id ] = $row;
+                }
+            }
+        }
+
+        $usage = array();
+        foreach ( array_merge( array_values( $by_source_id ), $zero_source ) as $row ) {
             $usage[] = array(
                 'type'  => $row->source_type,
                 'label' => $row->source_label,
@@ -259,6 +289,12 @@ class Media_Janitor_Scanner {
         }
 
         // Scan posts in chunks.
+        // Skip Elementor-built posts here — they are handled by scan_elementor()
+        // which reads the _elementor_data meta directly and is more precise.
+        $elementor_post_ids = $this->db->get_col(
+            "SELECT DISTINCT post_id FROM {$this->db->postmeta} WHERE meta_key = '_elementor_data'"
+        );
+
         $batch = 200;
         $offset = 0;
 
@@ -275,6 +311,10 @@ class Media_Janitor_Scanner {
             ) );
 
             foreach ( $posts as $post ) {
+                // Skip Elementor-managed posts to avoid duplicate references.
+                if ( in_array( (string) $post->ID, $elementor_post_ids, true ) ) {
+                    continue;
+                }
                 $content = $post->post_content;
                 foreach ( $url_map as $path => $att_id ) {
                     if ( false !== strpos( $content, $path ) ) {
@@ -283,7 +323,7 @@ class Media_Janitor_Scanner {
                             $post->post_type,
                             (int) $post->ID,
                             $post->post_title ?: "(#{$post->ID})",
-                            get_permalink( $post->ID ) ?: ''
+                            $this->get_post_url( (int) $post->ID )
                         );
                     }
                 }
@@ -353,7 +393,7 @@ class Media_Janitor_Scanner {
                         'meta:' . $row->meta_key,
                         (int) $row->post_id,
                         $post ? ( $post->post_title ?: "(#{$post->ID})" ) : "(#{$row->post_id})",
-                        $post ? ( get_permalink( $post->ID ) ?: '' ) : ''
+                        $post ? ( $this->get_post_url( (int) $post->ID ) ) : ''
                     );
                     continue;
                 }
@@ -367,7 +407,7 @@ class Media_Janitor_Scanner {
                             'meta:' . $row->meta_key,
                             (int) $row->post_id,
                             $post ? ( $post->post_title ?: "(#{$post->ID})" ) : "(#{$row->post_id})",
-                            $post ? ( get_permalink( $post->ID ) ?: '' ) : ''
+                            $post ? ( $this->get_post_url( (int) $post->ID ) ) : ''
                         );
                     }
                 }
@@ -396,7 +436,7 @@ class Media_Janitor_Scanner {
                 'featured_image',
                 (int) $row->post_id,
                 $row->post_title ?: "(#{$row->post_id})",
-                get_permalink( $row->post_id ) ?: ''
+                $this->get_post_url( (int) $row->post_id )
             );
         }
     }
@@ -422,7 +462,7 @@ class Media_Janitor_Scanner {
                     'woo_gallery',
                     (int) $row->post_id,
                     $row->post_title ?: "(#{$row->post_id})",
-                    get_permalink( $row->post_id ) ?: ''
+                    $this->get_post_url( (int) $row->post_id )
                 );
             }
         }
@@ -656,7 +696,7 @@ class Media_Janitor_Scanner {
                         'elementor',
                         (int) $row->post_id,
                         $row->post_title ?: "(#{$row->post_id})",
-                        get_permalink( $row->post_id ) ?: ''
+                        $this->get_post_url( (int) $row->post_id )
                     );
                 }
             }
@@ -669,7 +709,7 @@ class Media_Janitor_Scanner {
                         'elementor',
                         (int) $row->post_id,
                         $row->post_title ?: "(#{$row->post_id})",
-                        get_permalink( $row->post_id ) ?: ''
+                        $this->get_post_url( (int) $row->post_id )
                     );
                 }
             }
@@ -710,6 +750,20 @@ class Media_Janitor_Scanner {
     /* ------------------------------------------------------------------
      *  Helpers
      * ----------------------------------------------------------------*/
+
+    /**
+     * Get the canonical public URL for a post.
+     *
+     * get_permalink() during AJAX can return ?p=ID for the static front page
+     * because the rewrite object may not be fully initialised. This helper
+     * returns home_url('/') for the front-page post instead.
+     */
+    private function get_post_url( int $post_id ): string {
+        if ( 'page' === get_option( 'show_on_front' ) && (int) get_option( 'page_on_front' ) === $post_id ) {
+            return home_url( '/' );
+        }
+        return get_permalink( $post_id ) ?: '';
+    }
 
     /**
      * Record a single usage reference (de-duplicated).

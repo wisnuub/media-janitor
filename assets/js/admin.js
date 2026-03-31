@@ -4,14 +4,40 @@
 (function ($) {
     'use strict';
 
+    var LS_KEY = 'mj_state';
+
+    function loadState() {
+        try {
+            var saved = JSON.parse( localStorage.getItem( LS_KEY ) || '{}' );
+            return {
+                type:     saved.type   || 'all',
+                filter:   saved.filter || 'unused',
+                search:   saved.search || '',
+                paged:    saved.paged  || 1,
+            };
+        } catch (e) { return {}; }
+    }
+
+    function saveState() {
+        try {
+            localStorage.setItem( LS_KEY, JSON.stringify({
+                type:   state.type,
+                filter: state.filter,
+                search: state.search,
+                paged:  state.paged,
+            }) );
+        } catch (e) {}
+    }
+
+    var saved = loadState();
     var state = {
-        type: 'all',
-        filter: 'unused',
-        search: '',
-        paged: 1,
+        type:     saved.type   || 'all',
+        filter:   saved.filter || 'unused',
+        search:   saved.search || '',
+        paged:    saved.paged  || 1,
         selected: [],
-        items: [],
-        summary: null,
+        items:    [],
+        summary:  null,
     };
 
     var $grid, $emptyState, $pagination, $summary, $results, $progress;
@@ -31,10 +57,21 @@
         bindEvents();
         showLastScan();
 
-        // If a scan was already done, load results immediately.
+        // If a scan was already done, restore last UI state and load results.
         if (mjData.lastScan > 0) {
+            // Restore filter controls to saved state.
+            $('#mj-filter-status').val(state.filter);
+            $('#mj-search').val(state.search);
+            $('.mj-tab').removeClass('mj-tab--active');
+            $('.mj-tab[data-type="' + state.type + '"]').addClass('mj-tab--active');
+
             loadResults();
             loadSummary();
+
+            // Notify if new uploads exist since last scan.
+            if (mjData.newSinceLastScan > 0) {
+                showNewUploadsNotice(mjData.newSinceLastScan);
+            }
         }
     });
 
@@ -52,6 +89,7 @@
             $(this).addClass('mj-tab--active');
             state.type  = $(this).data('type');
             state.paged = 1;
+            saveState();
             loadResults();
         });
 
@@ -59,6 +97,7 @@
         $('#mj-filter-status').on('change', function () {
             state.filter = $(this).val();
             state.paged  = 1;
+            saveState();
             loadResults();
         });
 
@@ -70,6 +109,7 @@
             searchTimer = setTimeout(function () {
                 state.search = val;
                 state.paged  = 1;
+                saveState();
                 loadResults();
             }, 400);
         });
@@ -77,6 +117,7 @@
         // Pagination.
         $(document).on('click', '.mj-page-btn', function () {
             state.paged = parseInt($(this).data('page'), 10);
+            saveState();
             loadResults();
             $('html, body').animate({ scrollTop: $results.offset().top - 40 }, 200);
         });
@@ -489,6 +530,21 @@
     /* ----------------------------------------------------------------
      *  Helpers
      * ----------------------------------------------------------------*/
+
+    function showNewUploadsNotice(count) {
+        var $notice = $(
+            '<div class="mj-new-uploads-notice">' +
+            '<span class="dashicons dashicons-info" style="margin-right:6px;color:var(--mj-accent);"></span>' +
+            '<strong>' + count + ' new file' + (count > 1 ? 's' : '') + '</strong> uploaded since last scan — results may be incomplete.' +
+            ' <button class="button button-small" id="mj-rescan-btn" style="margin-left:8px;">Rescan now</button>' +
+            '</div>'
+        );
+        $results.before($notice);
+        $notice.find('#mj-rescan-btn').on('click', function () {
+            $notice.remove();
+            $('#mj-scan-btn').trigger('click');
+        });
+    }
 
     function updateDeleteBtn() {
         $('#mj-delete-selected').prop('disabled', state.selected.length === 0);

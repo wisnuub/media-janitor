@@ -2,6 +2,8 @@
 
 > **v1.0** — Find and safely remove unused media files from your WordPress site.
 
+> ⚠️ **PLEASE BACK UP YOUR SITE BEFORE USING THIS PLUGIN.** Deleted media files cannot be recovered.
+
 A free, lightweight WordPress plugin that scans your entire site to identify which media files are actually used — and where — so you can confidently clean up the unused ones without breaking anything.
 
 ## How It Works
@@ -62,9 +64,7 @@ Instead of blindly flagging media as "unused", the plugin:
 - [x] Categorized view (images, documents, videos, audio)
 - [ ] Beaver Builder / Divi / WPBakery support
 - [ ] Scan Gutenberg block attributes (reusable blocks)
-- [ ] Trash instead of permanent delete (with restore option)
 - [ ] Scheduled automatic scans
-- [ ] Export unused media list as CSV
 
 ## License
 
