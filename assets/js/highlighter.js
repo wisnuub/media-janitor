@@ -74,10 +74,13 @@
             }
         });
 
-        // 4. <a href> — skip if it wraps an already-matched element (lightbox/gallery pattern
-        //    where <a href="full.jpg"><img src="thumb.jpg"> causes false double-counting).
+        // 4. <a href> — use the raw attribute value, not a.href (which resolves to an absolute URL
+        //    including the current page path, causing false matches on fragment/anchor links).
+        //    Also skip pure fragment links (#...), javascript:, mailto:, tel:.
         document.querySelectorAll('a[href]').forEach(function (a) {
-            if (!matchesUrl(a.href, bare, noSize)) return;
+            var raw = a.getAttribute('href') || '';
+            if (!raw || /^(#|javascript:|mailto:|tel:)/i.test(raw)) return;
+            if (!matchesUrl(raw, bare, noSize)) return;
             var wrapsMatch = found.some(function (matched) { return a.contains(matched); });
             if (!wrapsMatch) addUnique(found, seen, a);
         });
