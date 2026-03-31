@@ -136,6 +136,14 @@ class Media_Janitor_Scanner {
 
         $usage = array();
         foreach ( $rows as $row ) {
+            // Skip entries whose source post has since been trashed or deleted.
+            $source_id = (int) $row->source_id;
+            if ( $source_id > 0 ) {
+                $status = get_post_status( $source_id );
+                if ( ! $status || 'trash' === $status ) {
+                    continue;
+                }
+            }
             $usage[] = array(
                 'type'  => $row->source_type,
                 'label' => $row->source_label,
@@ -325,6 +333,7 @@ class Media_Janitor_Scanner {
                  INNER JOIN {$this->db->posts} p ON p.ID = pm.post_id
                  WHERE p.post_type != 'attachment'
                  AND p.post_type != 'revision'
+                 AND p.post_status NOT IN ('auto-draft','trash')
                  AND pm.meta_key NOT IN ({$skip_placeholders})
                  AND pm.meta_value != ''
                  LIMIT %d OFFSET %d",
@@ -401,7 +410,8 @@ class Media_Janitor_Scanner {
              FROM {$this->db->postmeta} pm
              INNER JOIN {$this->db->posts} p ON p.ID = pm.post_id
              WHERE pm.meta_key = '_product_image_gallery'
-             AND pm.meta_value != ''"
+             AND pm.meta_value != ''
+             AND p.post_status NOT IN ('auto-draft','trash')"
         );
 
         foreach ( $rows as $row ) {

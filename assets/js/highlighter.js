@@ -74,9 +74,12 @@
             }
         });
 
-        // 4. <a href>
+        // 4. <a href> — skip if it wraps an already-matched element (lightbox/gallery pattern
+        //    where <a href="full.jpg"><img src="thumb.jpg"> causes false double-counting).
         document.querySelectorAll('a[href]').forEach(function (a) {
-            if (matchesUrl(a.href, bare, noSize)) addUnique(found, seen, a);
+            if (!matchesUrl(a.href, bare, noSize)) return;
+            var wrapsMatch = found.some(function (matched) { return a.contains(matched); });
+            if (!wrapsMatch) addUnique(found, seen, a);
         });
 
         // 5. Inline background-image
