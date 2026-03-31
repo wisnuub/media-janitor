@@ -76,8 +76,11 @@
 
         // 4. <a href> — use the raw attribute value, not a.href (which resolves to an absolute URL
         //    including the current page path, causing false matches on fragment/anchor links).
-        //    Also skip pure fragment links (#...), javascript:, mailto:, tel:.
+        //    Also skip pure fragment links (#...), javascript:, mailto:, tel:,
+        //    and anything inside the WP admin bar (whose Customize link embeds the current URL).
+        var adminBar = document.getElementById('wpadminbar');
         document.querySelectorAll('a[href]').forEach(function (a) {
+            if (adminBar && adminBar.contains(a)) return;
             var raw = a.getAttribute('href') || '';
             if (!raw || /^(#|javascript:|mailto:|tel:)/i.test(raw)) return;
             if (!matchesUrl(raw, bare, noSize)) return;
@@ -87,6 +90,7 @@
 
         // 5. Inline background-image
         document.querySelectorAll('[style*="background"]').forEach(function (el) {
+            if (adminBar && adminBar.contains(el)) return;
             var bg = window.getComputedStyle(el).backgroundImage || '';
             if (matchesUrl(bg, bare, noSize)) addUnique(found, seen, el);
         });
@@ -94,6 +98,7 @@
         // 6. CSS-class background-image (all elements)
         document.querySelectorAll('*').forEach(function (el) {
             if (['SCRIPT','STYLE','META','LINK','HEAD','TITLE','BR','HR'].indexOf(el.tagName) !== -1) return;
+            if (adminBar && adminBar.contains(el)) return;
             if (seen.has(el)) return;
             var bg = '';
             try { bg = window.getComputedStyle(el).backgroundImage || ''; } catch (e) { return; }
