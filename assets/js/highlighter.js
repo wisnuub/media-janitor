@@ -53,11 +53,32 @@
         var bare   = filename.replace(/^.*[/\\]/, '');
         var noSize = bare.replace(/-\d+x\d+(\.\w+)$/, '$1');
 
-        // 1. <img src / srcset>
+        // 1. <img src / srcset> — also check JS lazy-load data attributes used by
+        //    WP Rocket, BJ Lazy Load, Jetpack, Autoptimize, and similar plugins
+        //    that swap the real URL into data-src / data-lazy-src and put a
+        //    placeholder in src until the image scrolls into view.
         document.querySelectorAll('img').forEach(function (img) {
-            if (matchesUrl(img.src, bare, noSize) || matchesSrcset(img.srcset, bare, noSize)) {
+            if (
+                matchesUrl(img.src, bare, noSize) ||
+                matchesSrcset(img.srcset, bare, noSize) ||
+                matchesUrl(img.getAttribute('data-src')          || '', bare, noSize) ||
+                matchesUrl(img.getAttribute('data-lazy-src')     || '', bare, noSize) ||
+                matchesUrl(img.getAttribute('data-original')     || '', bare, noSize) ||
+                matchesSrcset(img.getAttribute('data-srcset')    || '', bare, noSize) ||
+                matchesSrcset(img.getAttribute('data-lazy-srcset') || '', bare, noSize)
+            ) {
                 addUnique(found, seen, img);
             }
+        });
+
+        // 1b. <picture><source srcset> — catches WebP served via picture element
+        //     where the <img> src points to the JPEG fallback, not the WebP.
+        document.querySelectorAll('picture source').forEach(function (source) {
+            var srcset = source.getAttribute('srcset') || source.getAttribute('data-srcset') || '';
+            if (!matchesSrcset(srcset, bare, noSize)) return;
+            var picture = source.closest('picture');
+            var target  = picture ? (picture.querySelector('img') || picture) : source;
+            addUnique(found, seen, target);
         });
 
         // 2. <video> / <video source>
@@ -224,9 +245,15 @@
 
                     candidates.forEach(function (el) {
                         if (seen.has(el)) return;
-                        var url = el.src || el.href || el.getAttribute('data') || '';
+                        var url    = el.src || el.href || el.getAttribute('data') || '';
                         var srcset = el.srcset || '';
-                        if (matchesUrl(url, bare, noSize) || matchesSrcset(srcset, bare, noSize)) {
+                        var lazyMatch =
+                            matchesUrl(el.getAttribute('data-src')      || '', bare, noSize) ||
+                            matchesUrl(el.getAttribute('data-lazy-src') || '', bare, noSize) ||
+                            matchesUrl(el.getAttribute('data-original') || '', bare, noSize) ||
+                            matchesSrcset(el.getAttribute('data-srcset')      || '', bare, noSize) ||
+                            matchesSrcset(el.getAttribute('data-lazy-srcset') || '', bare, noSize);
+                        if (matchesUrl(url, bare, noSize) || matchesSrcset(srcset, bare, noSize) || lazyMatch) {
                             seen.add(el);
                             newMatches.push(el);
                         }
