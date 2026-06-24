@@ -78,17 +78,22 @@ class Media_Janitor_Admin {
             'nonceScan'        => wp_create_nonce( 'mj_scan' ),
             'nonceResults'     => wp_create_nonce( 'mj_results' ),
             'nonceDelete'      => wp_create_nonce( 'mj_delete' ),
+            'nonceDuplicates'  => wp_create_nonce( 'mj_duplicates' ),
             'lastScan'         => $last_scan,
             'newSinceLastScan' => $new_since,
             'i18n'        => array(
-                'scanning'       => __( 'Scanning…', 'media-janitor' ),
-                'scanComplete'   => __( 'Scan complete!', 'media-janitor' ),
-                'confirmDelete'  => __( 'Are you sure you want to permanently delete the selected media files? This cannot be undone.', 'media-janitor' ),
-                'confirmAll'     => __( 'Are you sure you want to permanently delete ALL unused media files? This cannot be undone.', 'media-janitor' ),
-                'deleting'       => __( 'Deleting…', 'media-janitor' ),
-                'deleted'        => __( 'Deleted successfully.', 'media-janitor' ),
-                'noUnused'       => __( 'No unused media found. Your library is clean!', 'media-janitor' ),
-                'error'          => __( 'An error occurred. Please try again.', 'media-janitor' ),
+                'scanning'            => __( 'Scanning…', 'media-janitor' ),
+                'scanComplete'        => __( 'Scan complete!', 'media-janitor' ),
+                'confirmDelete'       => __( 'Are you sure you want to permanently delete the selected media files? This cannot be undone.', 'media-janitor' ),
+                'confirmAll'          => __( 'Are you sure you want to permanently delete ALL unused media files? This cannot be undone.', 'media-janitor' ),
+                'deleting'            => __( 'Deleting…', 'media-janitor' ),
+                'deleted'             => __( 'Deleted successfully.', 'media-janitor' ),
+                'noUnused'            => __( 'No unused media found. Your library is clean!', 'media-janitor' ),
+                'error'               => __( 'An error occurred. Please try again.', 'media-janitor' ),
+                'scanningDuplicates'  => __( 'Scanning for duplicates…', 'media-janitor' ),
+                'dupScanComplete'     => __( 'Duplicate scan complete!', 'media-janitor' ),
+                'dupNotScanned'       => __( 'No duplicate scan run yet. Click "Scan for Duplicates" to begin.', 'media-janitor' ),
+                'dupNoneFound'        => __( 'None found.', 'media-janitor' ),
             ),
         ) );
     }
@@ -179,6 +184,11 @@ class Media_Janitor_Admin {
                         <?php esc_html_e( 'Audio', 'media-janitor' ); ?>
                         <span class="mj-tab__count" id="mj-count-audio"></span>
                     </button>
+                    <button class="mj-tab mj-tab--duplicates" data-type="duplicates">
+                        <span class="dashicons dashicons-images-alt2"></span>
+                        <?php esc_html_e( 'Duplicates', 'media-janitor' ); ?>
+                        <span class="mj-tab__count" id="mj-count-duplicates"></span>
+                    </button>
                 </div>
 
                 <!-- Filters row -->
@@ -203,6 +213,66 @@ class Media_Janitor_Admin {
                         </button>
                     </div>
                 </div>
+
+                <!-- Duplicates pane (visible only when Duplicates tab is active) -->
+                <div id="mj-duplicates-pane" style="display:none;">
+
+                    <div class="mj-dup-actions">
+                        <button id="mj-scan-dup-btn" class="button button-primary">
+                            <span class="dashicons dashicons-images-alt2"></span>
+                            <?php esc_html_e( 'Scan for Duplicates', 'media-janitor' ); ?>
+                        </button>
+                        <span id="mj-dup-status" class="mj-scan-status"></span>
+                    </div>
+
+                    <div id="mj-dup-loading" style="display:none;padding:20px 0;font-size:14px;color:#646970;">
+                        <span class="spinner is-active" style="float:none;margin:0 8px 0 0;vertical-align:middle;"></span>
+                        <?php esc_html_e( 'Scanning…', 'media-janitor' ); ?>
+                    </div>
+
+                    <div id="mj-dup-not-scanned" class="mj-empty" style="display:none;">
+                        <span class="dashicons dashicons-images-alt2"></span>
+                        <p><?php esc_html_e( 'No duplicate scan run yet. Click "Scan for Duplicates" to begin.', 'media-janitor' ); ?></p>
+                    </div>
+
+                    <div id="mj-dup-results" style="display:none;">
+
+                        <div class="mj-dup-section">
+                            <div class="mj-dup-section__head">
+                                <h3><?php esc_html_e( 'Exact Duplicates', 'media-janitor' ); ?></h3>
+                                <span class="mj-tab__count" id="mj-dup-exact-count">0</span>
+                            </div>
+                            <p class="mj-dup-section__desc"><?php esc_html_e( 'Byte-identical files — same content uploaded more than once.', 'media-janitor' ); ?></p>
+                            <div id="mj-dup-exact-groups"></div>
+                        </div>
+
+                        <div class="mj-dup-section">
+                            <div class="mj-dup-section__head">
+                                <h3><?php esc_html_e( 'Scale / Name Variants', 'media-janitor' ); ?></h3>
+                                <span class="mj-tab__count" id="mj-dup-scale-count">0</span>
+                            </div>
+                            <p class="mj-dup-section__desc"><?php esc_html_e( 'Same base filename after stripping @2x / @3x / -2x suffixes — likely Figma scale exports.', 'media-janitor' ); ?></p>
+                            <div id="mj-dup-scale-groups"></div>
+                        </div>
+
+                        <div class="mj-dup-section">
+                            <div class="mj-dup-section__head">
+                                <h3><?php esc_html_e( 'Visual Duplicates', 'media-janitor' ); ?></h3>
+                                <span class="mj-tab__count" id="mj-dup-visual-count">0</span>
+                            </div>
+                            <p class="mj-dup-section__desc"><?php esc_html_e( 'Visually similar images regardless of filename — different format, resolution, or slight edits.', 'media-janitor' ); ?></p>
+                            <div id="mj-dup-visual-groups"></div>
+                        </div>
+
+                        <div class="mj-dup-footer">
+                            <button id="mj-dup-delete-selected" class="button button-link-delete" disabled>
+                                <span class="dashicons dashicons-trash" style="margin-top:4px;"></span>
+                                <?php esc_html_e( 'Delete Selected', 'media-janitor' ); ?>
+                            </button>
+                        </div>
+
+                    </div><!-- #mj-dup-results -->
+                </div><!-- #mj-duplicates-pane -->
 
                 <!-- Media grid -->
                 <div id="mj-grid" class="mj-grid"></div>

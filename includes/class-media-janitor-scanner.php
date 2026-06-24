@@ -24,6 +24,9 @@ class Media_Janitor_Scanner {
     /** @var string  Uploads base directory. */
     private $uploads_dir;
 
+    /** @var array|null  Per-request usage cache primed by build_duplicate_groups() to avoid N+1 queries. */
+    private $usage_cache = null;
+
     public function __construct() {
         global $wpdb;
         $this->db    = $wpdb;
@@ -129,10 +132,14 @@ class Media_Janitor_Scanner {
      * Get usage details for a single attachment.
      */
     public function get_usage( int $attachment_id ): array {
-        $rows = $this->db->get_results( $this->db->prepare(
-            "SELECT * FROM {$this->table} WHERE attachment_id = %d ORDER BY source_type, source_label",
-            $attachment_id
-        ) );
+        if ( null !== $this->usage_cache ) {
+            $rows = $this->usage_cache[ $attachment_id ] ?? array();
+        } else {
+            $rows = $this->db->get_results( $this->db->prepare(
+                "SELECT * FROM {$this->table} WHERE attachment_id = %d ORDER BY source_type, source_label",
+                $attachment_id
+            ) );
+        }
 
         // Type priority: lower number = shown over higher when same source_id conflicts.
         $priority = array(
@@ -237,6 +244,218 @@ class Media_Janitor_Scanner {
         }
 
         return $out;
+    }
+
+    /**
+     * Scan for duplicate media across three strategies:
+     *   1. Exact  — byte-identical files (MD5 hash)
+     *   2. Scale  — same base filename after stripping @2x / -2x / _2x suffixes
+     *   3. Visual — perceptually similar raster images (dHash, Hamming distance ≤ 10)
+     *
+     * Results are stored in wp_options (mj_duplicates) and returned.
+     */
+    public function scan_duplicates(): array {
+        @set_time_limit( 120 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+
+        $attachments = $this->get_all_attachments();
+        $data        = array();
+        $assigned    = array();
+
+        foreach ( $attachments as $att ) {
+            $id   = (int) $att->ID;
+            $file = get_attached_file( $id );
+            if ( ! $file || ! file_exists( $file ) ) {
+                continue;
+            }
+            $mime      = get_post_mime_type( $id ) ?: '';
+            $is_raster = str_starts_with( $mime, 'image/' ) && 'image/svg+xml' !== $mime;
+
+            $data[ $id ] = array(
+                'md5'       => md5_file( $file ),
+                'base_name' => $this->strip_scale_suffix( wp_basename( $file ) ),
+                // Bug 2 fix: pass $file so compute_dhash doesn't call get_attached_file() again
+                // and uses format-specific GD loaders instead of file_get_contents().
+                'dhash'     => $is_raster ? $this->compute_dhash( $id, $file ) : null,
+            );
+        }
+
+        // 1. Exact duplicates (MD5).
+        $exact   = array();
+        $md5_map = array();
+        foreach ( $data as $id => $info ) {
+            $md5_map[ $info['md5'] ][] = $id;
+        }
+        foreach ( $md5_map as $ids ) {
+            if ( count( $ids ) < 2 ) {
+                continue;
+            }
+            $exact[] = $ids;
+            foreach ( $ids as $id ) {
+                $assigned[ $id ] = true;
+            }
+        }
+
+        // 2. Scale / name variants (same base name, not already exact-matched).
+        $scale    = array();
+        $base_map = array();
+        foreach ( $data as $id => $info ) {
+            if ( isset( $assigned[ $id ] ) || ! $info['base_name'] ) {
+                continue;
+            }
+            $base_map[ $info['base_name'] ][] = $id;
+        }
+        foreach ( $base_map as $ids ) {
+            if ( count( $ids ) < 2 ) {
+                continue;
+            }
+            $scale[] = $ids;
+            foreach ( $ids as $id ) {
+                $assigned[ $id ] = true;
+            }
+        }
+
+        // 3. Visual duplicates — full pairwise pass + union-find for correct
+        //    transitive grouping (Bug 1 fix: the old single-pivot approach silently
+        //    dropped images that were only similar to an already-grouped image).
+        $visual     = array();
+        $candidates = array();
+        foreach ( $data as $id => $info ) {
+            if ( ! isset( $assigned[ $id ] ) && null !== $info['dhash'] ) {
+                $candidates[ $id ] = $info['dhash'];
+            }
+        }
+
+        if ( ! empty( $candidates ) ) {
+            $ids_list = array_keys( $candidates );
+            $cnt      = count( $ids_list );
+
+            // Collect all similar pairs first.
+            $pairs = array();
+            for ( $i = 0; $i < $cnt; $i++ ) {
+                for ( $j = $i + 1; $j < $cnt; $j++ ) {
+                    if ( $this->hamming_distance( $candidates[ $ids_list[ $i ] ], $candidates[ $ids_list[ $j ] ] ) <= 10 ) {
+                        $pairs[] = array( $ids_list[ $i ], $ids_list[ $j ] );
+                    }
+                }
+            }
+
+            // Union-find: every node starts as its own root.
+            $parent = array_combine( $ids_list, $ids_list );
+            $find   = null;
+            $find   = function ( int $id ) use ( &$parent, &$find ): int {
+                if ( $parent[ $id ] !== $id ) {
+                    $parent[ $id ] = $find( $parent[ $id ] ); // path compression
+                }
+                return $parent[ $id ];
+            };
+            foreach ( $pairs as list( $a, $b ) ) {
+                $ra = $find( $a );
+                $rb = $find( $b );
+                if ( $ra !== $rb ) {
+                    $parent[ $ra ] = $rb;
+                }
+            }
+
+            // Collect connected components with 2+ members.
+            $components = array();
+            foreach ( $ids_list as $id ) {
+                $components[ $find( $id ) ][] = $id;
+            }
+            $visual = array_values(
+                array_filter( $components, fn( array $g ) => count( $g ) >= 2 )
+            );
+        }
+
+        // Bug 6 fix: store only ID arrays — not full item objects — to keep the
+        // option small.  Full items are built on read in build_duplicate_groups().
+        update_option( 'mj_duplicates', array(
+            'exact'  => $exact,
+            'scale'  => $scale,
+            'visual' => $visual,
+        ), false );
+
+        return $this->build_duplicate_groups( $exact, $scale, $visual );
+    }
+
+    /**
+     * Return stored duplicate scan results, or null if never scanned.
+     * Stored data contains only ID arrays; full items are built here on read.
+     */
+    public function get_duplicate_results(): ?array {
+        $stored = get_option( 'mj_duplicates', null );
+        if ( ! is_array( $stored ) ) {
+            return null;
+        }
+
+        // Detect old format where full item arrays were stored instead of IDs
+        // (written by the version before Bug 6 was fixed).  Force re-scan.
+        $first_group = $stored['exact'][0] ?? $stored['scale'][0] ?? $stored['visual'][0] ?? null;
+        if ( ! empty( $first_group ) && is_array( reset( $first_group ) ) ) {
+            delete_option( 'mj_duplicates' );
+            return null;
+        }
+
+        return $this->build_duplicate_groups(
+            array_map( fn( $g ) => array_map( 'intval', $g ), $stored['exact']  ?? array() ),
+            array_map( fn( $g ) => array_map( 'intval', $g ), $stored['scale']  ?? array() ),
+            array_map( fn( $g ) => array_map( 'intval', $g ), $stored['visual'] ?? array() )
+        );
+    }
+
+    /**
+     * Build full item payloads for a set of ID-only groups.
+     * Primes a batch usage cache first so get_usage() needs only one query total.
+     */
+    private function build_duplicate_groups( array $exact, array $scale, array $visual ): array {
+        $all_ids = array();
+        foreach ( array_merge( $exact, $scale, $visual ) as $group ) {
+            foreach ( $group as $id ) {
+                $all_ids[] = (int) $id;
+            }
+        }
+
+        if ( ! empty( $all_ids ) ) {
+            $this->prime_usage_cache( array_unique( $all_ids ) );
+        }
+
+        $build = function ( array $groups ): array {
+            return array_map( function ( array $ids ): array {
+                return array_map( fn( int $id ) => $this->build_item( $id ), $ids );
+            }, $groups );
+        };
+
+        $result = array(
+            'exact'  => $build( $exact ),
+            'scale'  => $build( $scale ),
+            'visual' => $build( $visual ),
+        );
+
+        $this->usage_cache = null; // release after use
+        return $result;
+    }
+
+    /**
+     * Batch-fetch all usage rows for the given attachment IDs in a single query
+     * and store them keyed by attachment_id so get_usage() can skip per-row SELECTs.
+     */
+    private function prime_usage_cache( array $ids ): void {
+        $this->usage_cache = array();
+
+        if ( empty( $ids ) ) {
+            return;
+        }
+
+        $placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+        $rows         = $this->db->get_results(
+            $this->db->prepare(
+                "SELECT * FROM {$this->table} WHERE attachment_id IN ({$placeholders}) ORDER BY source_type, source_label",
+                $ids
+            )
+        );
+
+        foreach ( $rows as $row ) {
+            $this->usage_cache[ (int) $row->attachment_id ][] = $row;
+        }
     }
 
     /* ------------------------------------------------------------------
@@ -849,6 +1068,115 @@ class Media_Janitor_Scanner {
             default:
                 return '';
         }
+    }
+
+    /**
+     * Compute a difference hash (dHash) for a raster image.
+     * Resizes to 9×8, converts to grayscale, then encodes left-vs-right pixel
+     * comparisons as a 64-bit value (16 hex chars).  Cached in post meta.
+     *
+     * @param string $file  Optional pre-resolved file path; avoids a redundant
+     *                      get_attached_file() call when the caller already has it.
+     */
+    private function compute_dhash( int $attachment_id, string $file = '' ): ?string {
+        $cached = get_post_meta( $attachment_id, '_mj_dhash', true );
+        if ( $cached ) {
+            return $cached;
+        }
+
+        if ( ! $file ) {
+            $file = get_attached_file( $attachment_id );
+        }
+        if ( ! $file || ! file_exists( $file ) ) {
+            return null;
+        }
+
+        // Use format-specific GD loaders (Bug 2 fix): avoids loading the entire
+        // file into a PHP string via file_get_contents(), which can exhaust memory
+        // on large images.  Fall back to imagecreatefromstring() for exotic formats.
+        $mime = get_post_mime_type( $attachment_id );
+        $img  = false;
+        switch ( $mime ) {
+            case 'image/jpeg':
+                if ( function_exists( 'imagecreatefromjpeg' ) ) {
+                    $img = @imagecreatefromjpeg( $file );
+                }
+                break;
+            case 'image/png':
+                if ( function_exists( 'imagecreatefrompng' ) ) {
+                    $img = @imagecreatefrompng( $file );
+                }
+                break;
+            case 'image/gif':
+                if ( function_exists( 'imagecreatefromgif' ) ) {
+                    $img = @imagecreatefromgif( $file );
+                }
+                break;
+            case 'image/webp':
+                if ( function_exists( 'imagecreatefromwebp' ) ) {
+                    $img = @imagecreatefromwebp( $file );
+                }
+                break;
+            default:
+                if ( function_exists( 'imagecreatefromstring' ) ) {
+                    $raw = @file_get_contents( $file ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+                    if ( $raw ) {
+                        $img = @imagecreatefromstring( $raw );
+                    }
+                }
+        }
+
+        if ( ! $img ) {
+            return null;
+        }
+
+        $small = imagecreatetruecolor( 9, 8 );
+        imagecopyresampled( $small, $img, 0, 0, 0, 0, 9, 8, imagesx( $img ), imagesy( $img ) );
+        imagedestroy( $img );
+        imagefilter( $small, IMG_FILTER_GRAYSCALE );
+
+        $bits = '';
+        for ( $y = 0; $y < 8; $y++ ) {
+            for ( $x = 0; $x < 8; $x++ ) {
+                $left  = ( imagecolorat( $small, $x,     $y ) >> 16 ) & 0xFF;
+                $right = ( imagecolorat( $small, $x + 1, $y ) >> 16 ) & 0xFF;
+                $bits .= $left > $right ? '1' : '0';
+            }
+        }
+        imagedestroy( $small );
+
+        $hex = '';
+        foreach ( str_split( $bits, 4 ) as $nibble ) {
+            $hex .= base_convert( $nibble, 2, 16 );
+        }
+
+        update_post_meta( $attachment_id, '_mj_dhash', $hex );
+        return $hex;
+    }
+
+    /**
+     * Count differing bits (Hamming distance) between two hex-encoded hashes.
+     */
+    private function hamming_distance( string $hex1, string $hex2 ): int {
+        $distance = 0;
+        $len      = min( strlen( $hex1 ), strlen( $hex2 ) );
+        for ( $i = 0; $i < $len; $i++ ) {
+            $xor       = hexdec( $hex1[ $i ] ) ^ hexdec( $hex2[ $i ] );
+            $distance += substr_count( decbin( $xor ), '1' );
+        }
+        return $distance;
+    }
+
+    /**
+     * Strip Figma-style scale suffixes and the file extension from a filename.
+     * "icon@2x.png" → "icon"  |  "hero-3x.jpg" → "hero"  |  "logo_2x.png" → "logo"
+     */
+    private function strip_scale_suffix( string $filename ): string {
+        $name = strtolower( pathinfo( $filename, PATHINFO_FILENAME ) );
+        $name = preg_replace( '/@[2-9]x$/', '', $name );
+        $name = preg_replace( '/[-_][2-9]x$/', '', $name );
+        $name = preg_replace( '/[2-9]x$/', '', $name );
+        return $name;
     }
 
     /**

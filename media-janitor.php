@@ -58,6 +58,15 @@ function jejekin_mj_frontend_highlighter() {
 add_action( 'wp_enqueue_scripts', 'jejekin_mj_frontend_highlighter' );
 
 /**
+ * Clear the cached dHash whenever WordPress regenerates attachment metadata
+ * (e.g. after a file replacement), so stale hashes don't persist.
+ */
+add_filter( 'wp_update_attachment_metadata', function ( array $data, int $attachment_id ): array {
+    delete_post_meta( $attachment_id, '_mj_dhash' );
+    return $data;
+}, 10, 2 );
+
+/**
  * Activation hook — create the usage reference table.
  */
 function jejekin_mj_activate() {

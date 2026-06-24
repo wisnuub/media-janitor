@@ -10,9 +10,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Media_Janitor_Ajax {
 
     public function __construct() {
-        add_action( 'wp_ajax_mj_scan', array( $this, 'handle_scan' ) );
-        add_action( 'wp_ajax_mj_results', array( $this, 'handle_results' ) );
-        add_action( 'wp_ajax_mj_delete', array( $this, 'handle_delete' ) );
+        add_action( 'wp_ajax_mj_scan',             array( $this, 'handle_scan' ) );
+        add_action( 'wp_ajax_mj_results',           array( $this, 'handle_results' ) );
+        add_action( 'wp_ajax_mj_delete',            array( $this, 'handle_delete' ) );
+        add_action( 'wp_ajax_mj_scan_duplicates',   array( $this, 'handle_scan_duplicates' ) );
+        add_action( 'wp_ajax_mj_get_duplicates',    array( $this, 'handle_get_duplicates' ) );
     }
 
     /**
@@ -116,5 +118,39 @@ class Media_Janitor_Ajax {
             'deleted' => $deleted,
             'errors'  => $errors,
         ) );
+    }
+
+    /**
+     * Run the duplicate scanner and return the three groups of results.
+     */
+    public function handle_scan_duplicates(): void {
+        check_ajax_referer( 'mj_duplicates', 'nonce' );
+
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( 'Unauthorized', 403 );
+        }
+
+        $scanner = new Media_Janitor_Scanner();
+        wp_send_json_success( $scanner->scan_duplicates() );
+    }
+
+    /**
+     * Return previously stored duplicate scan results (no re-scan).
+     */
+    public function handle_get_duplicates(): void {
+        check_ajax_referer( 'mj_duplicates', 'nonce' );
+
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( 'Unauthorized', 403 );
+        }
+
+        $scanner = new Media_Janitor_Scanner();
+        $result  = $scanner->get_duplicate_results();
+
+        if ( null === $result ) {
+            wp_send_json_error( 'not_scanned' );
+        } else {
+            wp_send_json_success( $result );
+        }
     }
 }

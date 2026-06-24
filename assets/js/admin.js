@@ -37,10 +37,11 @@
         paged:    saved.paged  || 1,
         selected: [],
         items:    [],
+        dupItems: [], // flat list of items currently shown in duplicates pane
         summary:  null,
     };
 
-    var $grid, $emptyState, $pagination, $summary, $results, $progress;
+    var $grid, $emptyState, $pagination, $summary, $results, $progress, $dupPane;
 
     /* ----------------------------------------------------------------
      *  Init
@@ -53,6 +54,7 @@
         $summary    = $('#mj-summary');
         $results    = $('#mj-results');
         $progress   = $('#mj-progress');
+        $dupPane    = $('#mj-duplicates-pane');
 
         bindEvents();
         showLastScan();
@@ -65,7 +67,14 @@
             $('.mj-tab').removeClass('mj-tab--active');
             $('.mj-tab[data-type="' + state.type + '"]').addClass('mj-tab--active');
 
-            loadResults();
+            $results.show();
+
+            if (state.type === 'duplicates') {
+                showDuplicatesPane();
+            } else {
+                loadResults();
+            }
+
             loadSummary();
 
             // Notify if new uploads exist since last scan.
@@ -83,6 +92,16 @@
         // Scan button.
         $('#mj-scan-btn').on('click', startScan);
 
+        // Scan for Duplicates button.
+        $(document).on('click', '#mj-scan-dup-btn', startDuplicateScan);
+
+        // Delete selected duplicates.
+        $(document).on('click', '#mj-dup-delete-selected', function () {
+            if (state.selected.length === 0) return;
+            if (!confirm(mjData.i18n.confirmDelete)) return;
+            deleteMedia(state.selected);
+        });
+
         // Tabs.
         $(document).on('click', '.mj-tab', function () {
             $('.mj-tab').removeClass('mj-tab--active');
@@ -90,7 +109,13 @@
             state.type  = $(this).data('type');
             state.paged = 1;
             saveState();
-            loadResults();
+
+            if (state.type === 'duplicates') {
+                showDuplicatesPane();
+            } else {
+                hideDuplicatesPane();
+                loadResults();
+            }
         });
 
         // Filter dropdown.
@@ -122,10 +147,10 @@
             $('html, body').animate({ scrollTop: $results.offset().top - 40 }, 200);
         });
 
-        // Item checkbox.
+        // Item checkbox (grid and duplicates pane).
         $(document).on('change', '.mj-item__check', function () {
-            var id = parseInt($(this).val(), 10);
-            var $item = $(this).closest('.mj-item');
+            var id    = parseInt($(this).val(), 10);
+            var $item = $(this).closest('.mj-item, .mj-dup-item');
             if (this.checked) {
                 $item.addClass('mj-item--selected');
                 if (state.selected.indexOf(id) === -1) state.selected.push(id);
@@ -136,17 +161,18 @@
             updateDeleteBtn();
         });
 
-        // Select all.
+        // Select all (grid only).
         $('#mj-select-all').on('click', function () {
             var allChecked = $grid.find('.mj-item__check:not(:checked)').length === 0;
             $grid.find('.mj-item__check').prop('checked', !allChecked).trigger('change');
         });
 
-        // View usage (click thumbnail or "Used in" link).
+        // View usage (click thumbnail or "Used in" button — grid and duplicates pane).
         $(document).on('click', '.mj-item__thumb, .mj-item__usage-btn', function (e) {
             e.preventDefault();
-            var id = $(this).closest('.mj-item').data('id');
-            showUsageModal(id);
+            var $item = $(this).closest('.mj-item, .mj-dup-item');
+            var id    = $item.length ? $item.data('id') : parseInt($(this).data('id'), 10);
+            if (id) showUsageModal(id);
         });
 
         // Close modal.
@@ -154,7 +180,7 @@
             $('#mj-modal').hide();
         });
 
-        // Delete selected.
+        // Delete selected (grid).
         $('#mj-delete-selected').on('click', function () {
             if (state.selected.length === 0) return;
             if (!confirm(mjData.i18n.confirmDelete)) return;
@@ -169,7 +195,7 @@
     }
 
     /* ----------------------------------------------------------------
-     *  Scan
+     *  Scan (usage)
      * ----------------------------------------------------------------*/
 
     function startScan() {
@@ -200,7 +226,12 @@
                 // Load results.
                 setTimeout(function () {
                     $progress.hide();
-                    loadResults();
+                    $results.show();
+                    if (state.type === 'duplicates') {
+                        showDuplicatesPane();
+                    } else {
+                        loadResults();
+                    }
                 }, 600);
             } else {
                 toast(mjData.i18n.error, 'error');
@@ -214,10 +245,12 @@
     }
 
     /* ----------------------------------------------------------------
-     *  Results
+     *  Results (grid)
      * ----------------------------------------------------------------*/
 
     function loadResults() {
+        if (state.type === 'duplicates') return;
+
         $results.show();
         $grid.html('');
         $emptyState.html('<span class="spinner is-active" style="float:none;"></span>').show();
@@ -240,20 +273,6 @@
     }
 
     function loadSummary() {
-        // Re-use the scan endpoint to get summary.
-        $.post(mjData.ajaxUrl, {
-            action: 'mj_results',
-            nonce:  mjData.nonceResults,
-            filter: 'all',
-            type:   'all',
-            paged:  1,
-            per_page: 1,
-        }).done(function () {
-            // Trigger a lightweight scan to get summary.
-            // Actually we need to call scan or store summary. For now, let's compute from tabs.
-        });
-
-        // Just show the summary section if we have last scan.
         if (mjData.lastScan > 0) {
             $summary.show();
         }
@@ -364,12 +383,150 @@
     }
 
     /* ----------------------------------------------------------------
+     *  Duplicates pane
+     * ----------------------------------------------------------------*/
+
+    function showDuplicatesPane() {
+        $('.mj-filters').hide();
+        $grid.hide();
+        $pagination.hide();
+        $emptyState.hide();
+        $dupPane.show();
+        $results.show();
+        loadDuplicates();
+    }
+
+    function hideDuplicatesPane() {
+        $dupPane.hide();
+        $('.mj-filters').show();
+        $grid.show();
+    }
+
+    function startDuplicateScan() {
+        var $btn    = $('#mj-scan-dup-btn').prop('disabled', true);
+        var $status = $('#mj-dup-status').text(mjData.i18n.scanningDuplicates);
+
+        $('#mj-dup-not-scanned').hide();
+        $('#mj-dup-results').hide();
+        $('#mj-dup-loading').show();
+
+        $.post(mjData.ajaxUrl, {
+            action: 'mj_scan_duplicates',
+            nonce:  mjData.nonceDuplicates,
+        }).done(function (res) {
+            if (res.success) {
+                $status.text(mjData.i18n.dupScanComplete);
+                renderDuplicates(res.data);
+            } else {
+                toast(mjData.i18n.error, 'error');
+                $status.text('');
+            }
+        }).fail(function () {
+            toast(mjData.i18n.error, 'error');
+            $status.text('');
+        }).always(function () {
+            $('#mj-dup-loading').hide();
+            $btn.prop('disabled', false);
+        });
+    }
+
+    function loadDuplicates() {
+        $('#mj-dup-not-scanned').hide();
+        $('#mj-dup-results').hide();
+        $('#mj-dup-loading').show();
+
+        $.post(mjData.ajaxUrl, {
+            action: 'mj_get_duplicates',
+            nonce:  mjData.nonceDuplicates,
+        }).done(function (res) {
+            if (res.success) {
+                renderDuplicates(res.data);
+            } else {
+                $('#mj-dup-not-scanned').show();
+            }
+        }).fail(function () {
+            $('#mj-dup-not-scanned').show();
+        }).always(function () {
+            $('#mj-dup-loading').hide();
+        });
+    }
+
+    function renderDuplicates(data) {
+        state.dupItems = [];
+
+        var totalGroups = data.exact.length + data.scale.length + data.visual.length;
+        $('#mj-count-duplicates').text(totalGroups || '');
+
+        $('#mj-dup-exact-count').text(data.exact.length);
+        $('#mj-dup-scale-count').text(data.scale.length);
+        $('#mj-dup-visual-count').text(data.visual.length);
+
+        renderDuplicateSection(data.exact,  'mj-dup-exact-groups');
+        renderDuplicateSection(data.scale,  'mj-dup-scale-groups');
+        renderDuplicateSection(data.visual, 'mj-dup-visual-groups');
+
+        $('#mj-dup-results').show();
+    }
+
+    function renderDuplicateSection(groups, containerId) {
+        var $container = $('#' + containerId);
+
+        if (!groups.length) {
+            $container.html('<p class="mj-dup-none">' + mjData.i18n.dupNoneFound + '</p>');
+            return;
+        }
+
+        var html = '';
+        groups.forEach(function (group, idx) {
+            html += '<div class="mj-dup-group">';
+            html += '<div class="mj-dup-group__head">';
+            html += '<span class="mj-dup-group__label">Group ' + (idx + 1) + '</span>';
+            html += '<span class="mj-dup-group__count">' + group.length + ' files</span>';
+            html += '</div>';
+            html += '<div class="mj-dup-group__items">';
+
+            group.forEach(function (item) {
+                state.dupItems.push(item);
+
+                var isSelected = state.selected.indexOf(item.id) !== -1;
+                var thumbHtml  = item.thumb
+                    ? '<img src="' + escHtml(item.thumb) + '" alt="" loading="lazy">'
+                    : '<span class="dashicons ' + getIcon(item.category) + '"></span>';
+                var badgeClass = item.used ? 'mj-item__badge--used' : 'mj-item__badge--unused';
+                var badgeText  = item.used ? 'Used' : 'Unused';
+
+                html += '<div class="mj-dup-item' + (isSelected ? ' mj-item--selected' : '') + '" data-id="' + item.id + '">';
+                html += '<input type="checkbox" class="mj-item__check" value="' + item.id + '"' + (isSelected ? ' checked' : '') + '>';
+                html += '<div class="mj-dup-item__thumb">' + thumbHtml + '</div>';
+                html += '<div class="mj-dup-item__meta">';
+                html += '<div class="mj-item__name" title="' + escHtml(item.filename) + '">' + escHtml(item.filename) + '</div>';
+                html += '<div class="mj-item__details">';
+                html += '<span class="mj-item__badge ' + badgeClass + '">' + badgeText + '</span>';
+                html += '<span>' + escHtml(item.size_hr) + '</span>';
+                html += '</div>';
+                if (item.used && item.usage.length) {
+                    html += '<button class="mj-item__usage-btn" data-id="' + item.id + '">' +
+                        item.usage.length + ' reference' + (item.usage.length !== 1 ? 's' : '') + '</button>';
+                }
+                html += '</div>';
+                html += '</div>'; // .mj-dup-item
+            });
+
+            html += '</div>'; // .mj-dup-group__items
+            html += '</div>'; // .mj-dup-group
+        });
+
+        $container.html(html);
+    }
+
+    /* ----------------------------------------------------------------
      *  Usage modal
      * ----------------------------------------------------------------*/
 
     function showUsageModal(attachmentId) {
         var item = null;
-        state.items.forEach(function (i) {
+        var all  = state.items.concat(state.dupItems);
+        all.forEach(function (i) {
             if (i.id === attachmentId) item = i;
         });
 
@@ -397,13 +554,11 @@
                 var linkHtml;
 
                 if (u.url) {
-                    // Build a highlight URL that scrolls+highlights the media on the page.
                     var highlightUrl = buildHighlightUrl(u.url, item.filename);
                     var isAdmin = u.url.indexOf('/wp-admin/') !== -1;
 
                     linkHtml = '<a href="' + escHtml(highlightUrl) + '" target="_blank">' + escHtml(u.label) + '</a>';
 
-                    // Show a "Find on page" button for frontend pages (not admin pages).
                     if (!isAdmin) {
                         linkHtml += ' <a href="' + escHtml(highlightUrl) + '" target="_blank" class="mj-find-btn" title="Open page and scroll to this media">' +
                             '<span class="dashicons dashicons-search" style="font-size:14px;width:14px;height:14px;vertical-align:-2px;"></span> Find on page</a>';
@@ -424,10 +579,6 @@
         $modal.show();
     }
 
-    /**
-     * Build a URL with ?mj_highlight=filename appended so the frontend
-     * highlighter script can find and scroll to the media element.
-     */
     function buildHighlightUrl(baseUrl, filename) {
         if (!baseUrl) return baseUrl;
         var separator = baseUrl.indexOf('?') !== -1 ? '&' : '?';
@@ -439,7 +590,8 @@
      * ----------------------------------------------------------------*/
 
     function deleteMedia(ids) {
-        var $btn = $('#mj-delete-selected').prop('disabled', true).text(mjData.i18n.deleting);
+        var $btn = ( state.type === 'duplicates' ? $('#mj-dup-delete-selected') : $('#mj-delete-selected') )
+            .prop('disabled', true).text(mjData.i18n.deleting);
 
         $.post(mjData.ajaxUrl, {
             action: 'mj_delete',
@@ -449,8 +601,11 @@
             if (res.success) {
                 toast(res.data.deleted + ' file(s) deleted.', 'success');
                 state.selected = [];
-                loadResults();
-                // Refresh summary by re-scanning.
+                if (state.type === 'duplicates') {
+                    startDuplicateScan();
+                } else {
+                    loadResults();
+                }
                 refreshSummary();
             } else {
                 toast(mjData.i18n.error, 'error');
@@ -468,7 +623,6 @@
     function deleteAllUnused() {
         var $btn = $('#mj-delete-all-unused').prop('disabled', true).text(mjData.i18n.deleting);
 
-        // First, fetch ALL unused IDs.
         $.post(mjData.ajaxUrl, {
             action:   'mj_results',
             nonce:    mjData.nonceResults,
@@ -547,7 +701,9 @@
     }
 
     function updateDeleteBtn() {
-        $('#mj-delete-selected').prop('disabled', state.selected.length === 0);
+        var disabled = state.selected.length === 0;
+        $('#mj-delete-selected').prop('disabled', disabled);
+        $('#mj-dup-delete-selected').prop('disabled', disabled);
     }
 
     function updateProgress(pct, text) {
@@ -587,7 +743,6 @@
             'custom_css':     'Custom CSS',
         };
 
-        // Handle meta:key format.
         if (type.indexOf('meta:') === 0) {
             return 'Meta: ' + type.substring(5);
         }
