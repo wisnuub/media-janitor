@@ -1,5 +1,6 @@
 === Media Janitor ===
-Contributors: wisnuub
+Contributors: wisnoob
+Donate link: https://paypal.me/toast415
 Tags: media, unused media, cleanup, duplicate images, media library
 Requires at least: 5.8
 Tested up to: 7.1

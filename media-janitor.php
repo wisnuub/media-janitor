@@ -132,3 +132,18 @@ function media_janitor_deactivate() {
     }
 }
 register_deactivation_hook( __FILE__, 'media_janitor_deactivate' );
+
+/**
+ * "Donate" link under the plugin's description on the Plugins screen.
+ *
+ * @param array  $links Row meta links.
+ * @param string $file  Plugin basename.
+ * @return array
+ */
+function media_janitor_donate_link( $links, $file ) {
+    if ( plugin_basename( __FILE__ ) === $file ) {
+        $links[] = '<a href="https://paypal.me/toast415" target="_blank" rel="noopener">' . esc_html__( 'Donate', 'media-janitor' ) . '</a>';
+    }
+    return $links;
+}
+add_filter( 'plugin_row_meta', 'media_janitor_donate_link', 10, 2 );
