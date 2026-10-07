@@ -4,44 +4,44 @@
 (function ($) {
     'use strict';
 
-    var LS_KEY = 'mj_state';
+    var cfg  = window.mediaJanitor;
+    var i18n = cfg.i18n;
+
+    var LS_KEY = 'media_janitor_state';
 
     function loadState() {
         try {
-            var saved = JSON.parse( localStorage.getItem( LS_KEY ) || '{}' );
-            return {
-                type:     saved.type   || 'all',
-                filter:   saved.filter || 'unused',
-                search:   saved.search || '',
-                paged:    saved.paged  || 1,
-            };
-        } catch (e) { return {}; }
+            return JSON.parse(localStorage.getItem(LS_KEY) || '{}') || {};
+        } catch (e) {
+            return {};
+        }
     }
 
     function saveState() {
         try {
-            localStorage.setItem( LS_KEY, JSON.stringify({
+            localStorage.setItem(LS_KEY, JSON.stringify({
                 type:   state.type,
                 filter: state.filter,
                 search: state.search,
-                paged:  state.paged,
-            }) );
+                paged:  state.paged
+            }));
         } catch (e) {}
     }
 
     var saved = loadState();
     var state = {
-        type:     saved.type   || 'all',
-        filter:   saved.filter || 'unused',
-        search:   saved.search || '',
-        paged:    saved.paged  || 1,
-        selected: [],
-        items:    [],
-        dupItems: [], // flat list of items currently shown in duplicates pane
-        summary:  null,
+        type:       saved.type   || 'all',
+        filter:     saved.filter || 'unused',
+        search:     saved.search || '',
+        paged:      saved.paged  || 1,
+        selected:   [],
+        items:      [],
+        dupItems:   [],
+        scanStatus: cfg.scanStatus,
+        busy:       false
     };
 
-    var $grid, $emptyState, $pagination, $summary, $results, $progress, $dupPane;
+    var $grid, $emptyState, $pagination, $summary, $results, $progress, $dupPane, $notices;
 
     /* ----------------------------------------------------------------
      *  Init
@@ -55,18 +55,16 @@
         $results    = $('#mj-results');
         $progress   = $('#mj-progress');
         $dupPane    = $('#mj-duplicates-pane');
+        $notices    = $('#mj-notices');
 
         bindEvents();
         showLastScan();
+        renderNotices();
 
-        // If a scan was already done, restore last UI state and load results.
-        if (mjData.lastScan > 0) {
-            // Restore filter controls to saved state.
+        if (cfg.lastScan > 0 || state.scanStatus === 'running' || state.scanStatus === 'aborted') {
             $('#mj-filter-status').val(state.filter);
             $('#mj-search').val(state.search);
-            $('.mj-tab').removeClass('mj-tab--active');
-            $('.mj-tab[data-type="' + state.type + '"]').addClass('mj-tab--active');
-
+            setActiveTab(state.type);
             $results.show();
 
             if (state.type === 'duplicates') {
@@ -74,13 +72,7 @@
             } else {
                 loadResults();
             }
-
-            loadSummary();
-
-            // Notify if new uploads exist since last scan.
-            if (mjData.newSinceLastScan > 0) {
-                showNewUploadsNotice(mjData.newSinceLastScan);
-            }
+            refreshSummary();
         }
     });
 
@@ -89,25 +81,14 @@
      * ----------------------------------------------------------------*/
 
     function bindEvents() {
-        // Scan button.
         $('#mj-scan-btn').on('click', startScan);
-
-        // Scan for Duplicates button.
         $(document).on('click', '#mj-scan-dup-btn', startDuplicateScan);
 
-        // Delete selected duplicates.
-        $(document).on('click', '#mj-dup-delete-selected', function () {
-            if (state.selected.length === 0) return;
-            if (!confirm(mjData.i18n.confirmDelete)) return;
-            deleteMedia(state.selected);
-        });
-
-        // Tabs.
         $(document).on('click', '.mj-tab', function () {
-            $('.mj-tab').removeClass('mj-tab--active');
-            $(this).addClass('mj-tab--active');
             state.type  = $(this).data('type');
             state.paged = 1;
+            setActiveTab(state.type);
+            clearSelection();
             saveState();
 
             if (state.type === 'duplicates') {
@@ -118,15 +99,14 @@
             }
         });
 
-        // Filter dropdown.
         $('#mj-filter-status').on('change', function () {
             state.filter = $(this).val();
             state.paged  = 1;
+            clearSelection();
             saveState();
             loadResults();
         });
 
-        // Search.
         var searchTimer;
         $('#mj-search').on('input', function () {
             clearTimeout(searchTimer);
@@ -134,12 +114,12 @@
             searchTimer = setTimeout(function () {
                 state.search = val;
                 state.paged  = 1;
+                clearSelection();
                 saveState();
                 loadResults();
             }, 400);
         });
 
-        // Pagination.
         $(document).on('click', '.mj-page-btn', function () {
             state.paged = parseInt($(this).data('page'), 10);
             saveState();
@@ -147,101 +127,129 @@
             $('html, body').animate({ scrollTop: $results.offset().top - 40 }, 200);
         });
 
-        // Item checkbox (grid and duplicates pane).
         $(document).on('change', '.mj-item__check', function () {
             var id    = parseInt($(this).val(), 10);
             var $item = $(this).closest('.mj-item, .mj-dup-item');
+            $item.toggleClass('mj-item--selected', this.checked);
             if (this.checked) {
-                $item.addClass('mj-item--selected');
                 if (state.selected.indexOf(id) === -1) state.selected.push(id);
             } else {
-                $item.removeClass('mj-item--selected');
                 state.selected = state.selected.filter(function (x) { return x !== id; });
             }
-            updateDeleteBtn();
+            updateDeleteButtons();
         });
 
-        // Select all (grid only).
         $('#mj-select-all').on('click', function () {
             var allChecked = $grid.find('.mj-item__check:not(:checked)').length === 0;
             $grid.find('.mj-item__check').prop('checked', !allChecked).trigger('change');
         });
 
-        // View usage (click thumbnail or "Used in" button — grid and duplicates pane).
         $(document).on('click', '.mj-item__thumb, .mj-item__usage-btn', function (e) {
             e.preventDefault();
             var $item = $(this).closest('.mj-item, .mj-dup-item');
-            var id    = $item.length ? $item.data('id') : parseInt($(this).data('id'), 10);
+            var id    = $item.length ? parseInt($item.data('id'), 10) : parseInt($(this).data('id'), 10);
             if (id) showUsageModal(id);
         });
 
-        // Close modal.
-        $(document).on('click', '.mj-modal__close, .mj-modal__overlay', function () {
-            $('#mj-modal').hide();
+        $(document).on('click', '.mj-modal__close, .mj-modal__overlay', closeModal);
+        $(document).on('keydown', function (e) {
+            if (e.key === 'Escape' && $('#mj-modal').is(':visible')) closeModal();
         });
 
-        // Delete selected (grid).
         $('#mj-delete-selected').on('click', function () {
-            if (state.selected.length === 0) return;
-            if (!confirm(mjData.i18n.confirmDelete)) return;
-            deleteMedia(state.selected);
+            deleteSelected(state.items);
         });
 
-        // Delete all unused.
-        $('#mj-delete-all-unused').on('click', function () {
-            if (!confirm(mjData.i18n.confirmAll)) return;
-            deleteAllUnused();
+        $(document).on('click', '#mj-dup-delete-selected', function () {
+            deleteSelected(state.dupItems);
+        });
+
+        $('#mj-delete-all-unused').on('click', deleteAllUnused);
+
+        $(document).on('click', '.mj-rescan-btn', function () {
+            startScan();
         });
     }
 
     /* ----------------------------------------------------------------
-     *  Scan (usage)
+     *  Scan (usage) — repeated requests until the server reports complete
      * ----------------------------------------------------------------*/
 
     function startScan() {
-        var $btn = $('#mj-scan-btn').prop('disabled', true);
-        var $status = $('#mj-scan-status').text(mjData.i18n.scanning);
+        if (state.busy) return;
+        state.busy = true;
 
+        $('#mj-scan-btn').prop('disabled', true);
+        $('#mj-scan-status').text(i18n.scanning);
         $progress.show();
         $results.hide();
         $summary.hide();
+        $notices.empty();
+        clearSelection();
+        updateProgress(0, i18n.scanning);
 
-        updateProgress(0, 'Starting scan…');
+        scanStep(true);
+    }
 
-        $.post(mjData.ajaxUrl, {
-            action: 'mj_scan',
-            nonce:  mjData.nonceScan,
-            offset: 0,
+    function scanStep(restart) {
+        $.post(cfg.ajaxUrl, {
+            action:  'media_janitor_scan',
+            nonce:   cfg.nonce,
+            restart: restart ? 1 : 0
         }).done(function (res) {
-            if (res.success) {
-                updateProgress(100, mjData.i18n.scanComplete);
-                $status.text(mjData.i18n.scanComplete);
-                mjData.lastScan = Math.floor(Date.now() / 1000);
-
-                // Render summary.
-                if (res.data.summary) {
-                    renderSummary(res.data.summary);
-                }
-
-                // Load results.
-                setTimeout(function () {
-                    $progress.hide();
-                    $results.show();
-                    if (state.type === 'duplicates') {
-                        showDuplicatesPane();
-                    } else {
-                        loadResults();
-                    }
-                }, 600);
-            } else {
-                toast(mjData.i18n.error, 'error');
+            if (!res.success) {
+                scanFailed();
+                return;
             }
-        }).fail(function () {
-            toast(mjData.i18n.error, 'error');
-        }).always(function () {
-            $btn.prop('disabled', false);
+
+            var data = res.data;
+            state.scanStatus = data.status;
+
+            if (data.status === 'running') {
+                updateProgress(data.progress, i18n.scanStep[data.step] || i18n.scanning);
+                scanStep(false);
+                return;
+            }
+
+            if (data.status !== 'complete') {
+                scanFailed();
+                return;
+            }
+
+            updateProgress(100, i18n.scanComplete);
+            $('#mj-scan-status').text(i18n.scanComplete);
+            cfg.lastScan         = data.lastScan;
+            cfg.newSinceLastScan = 0;
             showLastScan();
-        });
+            renderNotices();
+            if (data.summary) renderSummary(data.summary);
+            finishScan();
+
+            setTimeout(function () {
+                $progress.hide();
+                $results.show();
+                if (state.type === 'duplicates') {
+                    showDuplicatesPane();
+                } else {
+                    loadResults();
+                }
+            }, 600);
+        }).fail(scanFailed);
+    }
+
+    function scanFailed() {
+        state.scanStatus = 'aborted';
+        $progress.hide();
+        $('#mj-scan-status').text('');
+        renderNotices();
+        finishScan();
+        toast(i18n.scanFailed, 'error');
+    }
+
+    function finishScan() {
+        state.busy = false;
+        $('#mj-scan-btn').prop('disabled', false);
+        updateDeleteButtons();
     }
 
     /* ----------------------------------------------------------------
@@ -255,72 +263,57 @@
         $grid.html('');
         $emptyState.html('<span class="spinner is-active" style="float:none;"></span>').show();
 
-        $.post(mjData.ajaxUrl, {
-            action:   'mj_results',
-            nonce:    mjData.nonceResults,
+        $.post(cfg.ajaxUrl, {
+            action:   'media_janitor_results',
+            nonce:    cfg.nonce,
             filter:   state.filter,
             type:     state.type,
             search:   state.search,
             paged:    state.paged,
-            per_page: 40,
+            per_page: 40
         }).done(function (res) {
-            if (res.success) {
-                state.items = res.data.items;
-                renderGrid(res.data.items);
-                renderPagination(res.data.total, res.data.pages);
+            if (!res.success) {
+                $emptyState.html('<p>' + escHtml(i18n.error) + '</p>');
+                return;
             }
+            // Page past the end (e.g. after deleting) — step back.
+            if (!res.data.items.length && state.paged > 1) {
+                state.paged = res.data.pages;
+                saveState();
+                loadResults();
+                return;
+            }
+            state.items = res.data.items;
+            renderGrid(res.data.items);
+            renderPagination(res.data.total, res.data.pages);
+        }).fail(function () {
+            $emptyState.html('<p>' + escHtml(i18n.error) + '</p>');
         });
-    }
-
-    function loadSummary() {
-        if (mjData.lastScan > 0) {
-            $summary.show();
-        }
     }
 
     function renderGrid(items) {
         $emptyState.hide().html('');
 
         if (!items.length) {
+            var msg = state.search ? i18n.noMatch
+                : state.filter === 'unused' ? i18n.noUnused
+                : state.filter === 'used' ? i18n.noUsed
+                : i18n.noFiles;
             $grid.html('');
-            $emptyState.html(
-                '<span class="dashicons dashicons-yes-alt"></span>' +
-                '<p>' + mjData.i18n.noUnused + '</p>'
-            ).show();
+            $emptyState.html('<span class="dashicons dashicons-yes-alt"></span><p>' + escHtml(msg) + '</p>').show();
             return;
         }
 
         var html = '';
         items.forEach(function (item) {
-            var isSelected = state.selected.indexOf(item.id) !== -1;
-            var thumbHtml;
-
-            if (item.thumb) {
-                thumbHtml = '<img src="' + escHtml(item.thumb) + '" alt="" loading="lazy">';
-            } else {
-                var icon = getIcon(item.category);
-                thumbHtml = '<span class="dashicons ' + icon + '"></span>';
-            }
-
-            var badgeClass = item.used ? 'mj-item__badge--used' : 'mj-item__badge--unused';
-            var badgeText  = item.used ? 'Used' : 'Unused';
-
-            var usageInfo = '';
-            if (item.used && item.usage.length) {
-                usageInfo = '<button class="mj-item__usage-btn">' + item.usage.length + ' reference' + (item.usage.length > 1 ? 's' : '') + '</button>';
-            }
-
-            html += '<div class="mj-item' + (isSelected ? ' mj-item--selected' : '') + '" data-id="' + item.id + '">';
-            html += '<input type="checkbox" class="mj-item__check" value="' + item.id + '"' + (isSelected ? ' checked' : '') + '>';
-            html += '<div class="mj-item__thumb">' + thumbHtml + '</div>';
+            html += '<div class="mj-item' + (isSelected(item.id) ? ' mj-item--selected' : '') + '" data-id="' + item.id + '">';
+            html += checkboxHtml(item);
+            html += '<div class="mj-item__thumb">' + thumbHtml(item) + '</div>';
             html += '<div class="mj-item__info">';
             html += '<div class="mj-item__name" title="' + escHtml(item.filename) + '">' + escHtml(item.filename) + '</div>';
-            html += '<div class="mj-item__details">';
-            html += '<span class="mj-item__badge ' + badgeClass + '">' + badgeText + '</span>';
-            html += '<span>' + escHtml(item.size_hr) + '</span>';
-            html += '</div>';
-            if (usageInfo) {
-                html += '<div style="margin-top:4px;">' + usageInfo + '</div>';
+            html += '<div class="mj-item__details">' + badgeHtml(item) + '<span>' + escHtml(item.size_hr) + '</span></div>';
+            if (item.used && item.usage.length) {
+                html += '<div style="margin-top:4px;">' + usageBtnHtml(item) + '</div>';
             }
             html += '</div></div>';
         });
@@ -334,13 +327,9 @@
             return;
         }
 
-        var html = '';
         var current = state.paged;
+        var html = '<button class="mj-page-btn" data-page="' + (current - 1) + '"' + (current <= 1 ? ' disabled' : '') + '>&laquo;</button>';
 
-        // Prev button.
-        html += '<button class="mj-page-btn" data-page="' + (current - 1) + '"' + (current <= 1 ? ' disabled' : '') + '>&laquo;</button>';
-
-        // Page numbers.
         var start = Math.max(1, current - 2);
         var end   = Math.min(pages, current + 2);
 
@@ -348,23 +337,27 @@
             html += '<button class="mj-page-btn" data-page="1">1</button>';
             if (start > 2) html += '<span style="padding:6px 4px;">…</span>';
         }
-
         for (var i = start; i <= end; i++) {
             html += '<button class="mj-page-btn' + (i === current ? ' mj-page--active' : '') + '" data-page="' + i + '">' + i + '</button>';
         }
-
         if (end < pages) {
             if (end < pages - 1) html += '<span style="padding:6px 4px;">…</span>';
             html += '<button class="mj-page-btn" data-page="' + pages + '">' + pages + '</button>';
         }
 
-        // Next button.
         html += '<button class="mj-page-btn" data-page="' + (current + 1) + '"' + (current >= pages ? ' disabled' : '') + '>&raquo;</button>';
-
-        // Total count.
-        html += '<span style="margin-left:12px;font-size:13px;color:#646970;">' + total + ' items</span>';
+        html += '<span style="margin-left:12px;font-size:13px;color:#646970;">' + escHtml(sprintf(i18n.items, total)) + '</span>';
 
         $pagination.html(html);
+    }
+
+    function refreshSummary() {
+        $.post(cfg.ajaxUrl, {
+            action: 'media_janitor_summary',
+            nonce:  cfg.nonce
+        }).done(function (res) {
+            if (res.success) renderSummary(res.data);
+        });
     }
 
     function renderSummary(summary) {
@@ -374,10 +367,8 @@
         $('#mj-unused').text(summary.unused);
         $('#mj-size').text(humanSize(summary.unused_size));
 
-        // Update tab counts.
         $('#mj-count-all').text(summary.total);
-        var cats = summary.categories || {};
-        $.each(cats, function (key, val) {
+        $.each(summary.categories || {}, function (key, val) {
             $('#mj-count-' + key).text(val.total);
         });
     }
@@ -400,44 +391,64 @@
         $dupPane.hide();
         $('.mj-filters').show();
         $grid.show();
+        $pagination.show();
     }
 
     function startDuplicateScan() {
-        var $btn    = $('#mj-scan-dup-btn').prop('disabled', true);
-        var $status = $('#mj-dup-status').text(mjData.i18n.scanningDuplicates);
+        if (state.busy) return;
+        state.busy = true;
 
-        $('#mj-dup-not-scanned').hide();
-        $('#mj-dup-results').hide();
+        $('#mj-scan-dup-btn').prop('disabled', true);
+        $('#mj-dup-status').text('');
+        $('#mj-dup-not-scanned, #mj-dup-results').hide();
+        $('#mj-dup-loading-text').text(i18n.scanning);
         $('#mj-dup-loading').show();
+        clearSelection();
 
-        $.post(mjData.ajaxUrl, {
-            action: 'mj_scan_duplicates',
-            nonce:  mjData.nonceDuplicates,
+        duplicateStep(true);
+    }
+
+    function duplicateStep(restart) {
+        $.post(cfg.ajaxUrl, {
+            action:  'media_janitor_scan_duplicates',
+            nonce:   cfg.nonce,
+            restart: restart ? 1 : 0
         }).done(function (res) {
-            if (res.success) {
-                $status.text(mjData.i18n.dupScanComplete);
-                renderDuplicates(res.data);
-            } else {
-                toast(mjData.i18n.error, 'error');
-                $status.text('');
+            if (!res.success) {
+                duplicateDone(false);
+                return;
             }
+            if (res.data.status === 'running') {
+                $('#mj-dup-loading-text').text(sprintf(i18n.hashing, res.data.done, res.data.total));
+                duplicateStep(false);
+                return;
+            }
+            $('#mj-dup-status').text(i18n.dupScanComplete);
+            renderDuplicates(res.data.results);
+            duplicateDone(true);
         }).fail(function () {
-            toast(mjData.i18n.error, 'error');
-            $status.text('');
-        }).always(function () {
-            $('#mj-dup-loading').hide();
-            $btn.prop('disabled', false);
+            duplicateDone(false);
         });
     }
 
+    function duplicateDone(ok) {
+        state.busy = false;
+        $('#mj-dup-loading').hide();
+        $('#mj-scan-dup-btn').prop('disabled', false);
+        if (!ok) {
+            toast(i18n.error, 'error');
+            $('#mj-dup-not-scanned').show();
+        }
+    }
+
     function loadDuplicates() {
-        $('#mj-dup-not-scanned').hide();
-        $('#mj-dup-results').hide();
+        $('#mj-dup-not-scanned, #mj-dup-results').hide();
+        $('#mj-dup-loading-text').text(i18n.scanning);
         $('#mj-dup-loading').show();
 
-        $.post(mjData.ajaxUrl, {
-            action: 'mj_get_duplicates',
-            nonce:  mjData.nonceDuplicates,
+        $.post(cfg.ajaxUrl, {
+            action: 'media_janitor_get_duplicates',
+            nonce:  cfg.nonce
         }).done(function (res) {
             if (res.success) {
                 renderDuplicates(res.data);
@@ -456,23 +467,24 @@
 
         var totalGroups = data.exact.length + data.scale.length + data.visual.length;
         $('#mj-count-duplicates').text(totalGroups || '');
-
         $('#mj-dup-exact-count').text(data.exact.length);
         $('#mj-dup-scale-count').text(data.scale.length);
         $('#mj-dup-visual-count').text(data.visual.length);
 
-        renderDuplicateSection(data.exact,  'mj-dup-exact-groups');
-        renderDuplicateSection(data.scale,  'mj-dup-scale-groups');
+        renderDuplicateSection(data.exact, 'mj-dup-exact-groups');
+        renderDuplicateSection(data.scale, 'mj-dup-scale-groups');
         renderDuplicateSection(data.visual, 'mj-dup-visual-groups');
 
+        $('#mj-dup-visual-skipped').text(i18n.visualSkipped).toggle(!!data.visual_skipped);
         $('#mj-dup-results').show();
+        updateDeleteButtons();
     }
 
     function renderDuplicateSection(groups, containerId) {
         var $container = $('#' + containerId);
 
         if (!groups.length) {
-            $container.html('<p class="mj-dup-none">' + mjData.i18n.dupNoneFound + '</p>');
+            $container.html('<p class="mj-dup-none">' + escHtml(i18n.dupNoneFound) + '</p>');
             return;
         }
 
@@ -480,40 +492,23 @@
         groups.forEach(function (group, idx) {
             html += '<div class="mj-dup-group">';
             html += '<div class="mj-dup-group__head">';
-            html += '<span class="mj-dup-group__label">Group ' + (idx + 1) + '</span>';
-            html += '<span class="mj-dup-group__count">' + group.length + ' files</span>';
-            html += '</div>';
-            html += '<div class="mj-dup-group__items">';
+            html += '<span class="mj-dup-group__label">' + escHtml(sprintf(i18n.group, idx + 1)) + '</span>';
+            html += '<span class="mj-dup-group__count">' + escHtml(sprintf(i18n.files, group.length)) + '</span>';
+            html += '</div><div class="mj-dup-group__items">';
 
             group.forEach(function (item) {
                 state.dupItems.push(item);
-
-                var isSelected = state.selected.indexOf(item.id) !== -1;
-                var thumbHtml  = item.thumb
-                    ? '<img src="' + escHtml(item.thumb) + '" alt="" loading="lazy">'
-                    : '<span class="dashicons ' + getIcon(item.category) + '"></span>';
-                var badgeClass = item.used ? 'mj-item__badge--used' : 'mj-item__badge--unused';
-                var badgeText  = item.used ? 'Used' : 'Unused';
-
-                html += '<div class="mj-dup-item' + (isSelected ? ' mj-item--selected' : '') + '" data-id="' + item.id + '">';
-                html += '<input type="checkbox" class="mj-item__check" value="' + item.id + '"' + (isSelected ? ' checked' : '') + '>';
-                html += '<div class="mj-dup-item__thumb">' + thumbHtml + '</div>';
+                html += '<div class="mj-dup-item' + (isSelected(item.id) ? ' mj-item--selected' : '') + '" data-id="' + item.id + '">';
+                html += checkboxHtml(item);
+                html += '<div class="mj-dup-item__thumb">' + thumbHtml(item) + '</div>';
                 html += '<div class="mj-dup-item__meta">';
                 html += '<div class="mj-item__name" title="' + escHtml(item.filename) + '">' + escHtml(item.filename) + '</div>';
-                html += '<div class="mj-item__details">';
-                html += '<span class="mj-item__badge ' + badgeClass + '">' + badgeText + '</span>';
-                html += '<span>' + escHtml(item.size_hr) + '</span>';
-                html += '</div>';
-                if (item.used && item.usage.length) {
-                    html += '<button class="mj-item__usage-btn" data-id="' + item.id + '">' +
-                        item.usage.length + ' reference' + (item.usage.length !== 1 ? 's' : '') + '</button>';
-                }
-                html += '</div>';
-                html += '</div>'; // .mj-dup-item
+                html += '<div class="mj-item__details">' + badgeHtml(item) + '<span>' + escHtml(item.size_hr) + '</span></div>';
+                if (item.used && item.usage.length) html += usageBtnHtml(item);
+                html += '</div></div>';
             });
 
-            html += '</div>'; // .mj-dup-group__items
-            html += '</div>'; // .mj-dup-group
+            html += '</div></div>';
         });
 
         $container.html(html);
@@ -524,186 +519,240 @@
      * ----------------------------------------------------------------*/
 
     function showUsageModal(attachmentId) {
-        var item = null;
-        var all  = state.items.concat(state.dupItems);
-        all.forEach(function (i) {
-            if (i.id === attachmentId) item = i;
-        });
-
+        var item = findItem(attachmentId);
         if (!item) return;
 
-        var $modal = $('#mj-modal');
-        var $thumb = $('#mj-modal-thumb');
-
-        if (item.thumb) {
-            $thumb.html('<img src="' + escHtml(item.thumb) + '" alt="">');
-        } else {
-            $thumb.html('<span class="dashicons ' + getIcon(item.category) + '"></span>');
-        }
-
+        $('#mj-modal-thumb').html(thumbHtml(item));
         $('#mj-modal-title').text(item.filename);
         $('#mj-modal-meta').text(item.mime + ' · ' + item.size_hr);
 
         var $list = $('#mj-modal-usage').empty();
 
         if (!item.usage.length) {
-            $list.append('<li class="mj-no-usage">This media file is not used anywhere.</li>');
+            $list.append('<li class="mj-no-usage">' + escHtml(i18n.notUsedAnywhere) + '</li>');
         } else {
             item.usage.forEach(function (u) {
-                var typeLabel = formatSourceType(u.type);
-                var linkHtml;
+                var linkHtml = escHtml(u.label);
 
                 if (u.url) {
-                    var highlightUrl = buildHighlightUrl(u.url, item.filename);
-                    var isAdmin = u.url.indexOf('/wp-admin/') !== -1;
+                    var isAdmin      = u.url.indexOf('/wp-admin/') !== -1;
+                    var highlightUrl = isAdmin ? u.url : buildHighlightUrl(u.url, item.filename);
 
-                    linkHtml = '<a href="' + escHtml(highlightUrl) + '" target="_blank">' + escHtml(u.label) + '</a>';
-
+                    linkHtml = '<a href="' + escHtml(highlightUrl) + '" target="_blank" rel="noopener">' + escHtml(u.label) + '</a>';
                     if (!isAdmin) {
-                        linkHtml += ' <a href="' + escHtml(highlightUrl) + '" target="_blank" class="mj-find-btn" title="Open page and scroll to this media">' +
-                            '<span class="dashicons dashicons-search" style="font-size:14px;width:14px;height:14px;vertical-align:-2px;"></span> Find on page</a>';
+                        linkHtml += ' <a href="' + escHtml(highlightUrl) + '" target="_blank" rel="noopener" class="mj-find-btn" title="' + escHtml(i18n.findOnPageTitle) + '">' +
+                            '<span class="dashicons dashicons-search" style="font-size:14px;width:14px;height:14px;vertical-align:-2px;"></span> ' + escHtml(i18n.findOnPage) + '</a>';
                     }
-                } else {
-                    linkHtml = escHtml(u.label);
                 }
 
                 $list.append(
                     '<li>' +
-                    '<span class="mj-usage-type">' + escHtml(typeLabel) + '</span>' +
+                    '<span class="mj-usage-type">' + escHtml(formatSourceType(u.type)) + '</span>' +
                     '<span class="mj-usage-label">' + linkHtml + '</span>' +
                     '</li>'
                 );
             });
         }
 
-        $modal.show();
+        $('#mj-modal').show();
+        $('#mj-modal .mj-modal__close').trigger('focus');
+    }
+
+    function closeModal() {
+        $('#mj-modal').hide();
     }
 
     function buildHighlightUrl(baseUrl, filename) {
-        if (!baseUrl) return baseUrl;
         var separator = baseUrl.indexOf('?') !== -1 ? '&' : '?';
-        return baseUrl + separator + 'mj_highlight=' + encodeURIComponent(filename);
+        return baseUrl + separator + 'media_janitor_highlight=' + encodeURIComponent(filename);
     }
 
     /* ----------------------------------------------------------------
      *  Delete
      * ----------------------------------------------------------------*/
 
-    function deleteMedia(ids) {
-        var $btn = ( state.type === 'duplicates' ? $('#mj-dup-delete-selected') : $('#mj-delete-selected') )
-            .prop('disabled', true).text(mjData.i18n.deleting);
+    function deleteSelected(pool) {
+        if (!state.selected.length || !canDelete()) return;
 
-        $.post(mjData.ajaxUrl, {
-            action: 'mj_delete',
-            nonce:  mjData.nonceDelete,
-            ids:    ids,
-        }).done(function (res) {
-            if (res.success) {
-                toast(res.data.deleted + ' file(s) deleted.', 'success');
-                state.selected = [];
-                if (state.type === 'duplicates') {
-                    startDuplicateScan();
-                } else {
-                    loadResults();
-                }
-                refreshSummary();
-            } else {
-                toast(mjData.i18n.error, 'error');
-            }
-        }).fail(function () {
-            toast(mjData.i18n.error, 'error');
-        }).always(function () {
-            $btn.prop('disabled', false).html(
-                '<span class="dashicons dashicons-trash" style="margin-top:4px;"></span> Delete Selected'
-            );
-            updateDeleteBtn();
+        var ids   = state.selected.slice();
+        var used  = ids.filter(function (id) {
+            var item = findItem(id, pool);
+            return item && item.used;
         });
+        var force = false;
+
+        if (used.length) {
+            if (!confirm(sprintf(i18n.confirmUsed, used.length))) return;
+            force = true;
+        }
+        if (!confirm(sprintf(i18n.confirmDelete, ids.length))) return;
+
+        runDelete(ids, force);
     }
 
     function deleteAllUnused() {
-        var $btn = $('#mj-delete-all-unused').prop('disabled', true).text(mjData.i18n.deleting);
+        if (!canDelete()) return;
 
-        $.post(mjData.ajaxUrl, {
-            action:   'mj_results',
-            nonce:    mjData.nonceResults,
-            filter:   'unused',
-            type:     state.type,
-            search:   '',
-            paged:    1,
-            per_page: 9999,
+        $.post(cfg.ajaxUrl, {
+            action: 'media_janitor_unused_ids',
+            nonce:  cfg.nonce,
+            type:   state.type
         }).done(function (res) {
-            if (res.success && res.data.items.length) {
-                var ids = res.data.items.map(function (i) { return i.id; });
-                deleteBatch(ids, 0, $btn);
-            } else {
-                toast(mjData.i18n.noUnused, 'success');
-                $btn.prop('disabled', false).text('Delete All Unused');
+            if (!res.success) {
+                toast(i18n.error, 'error');
+                return;
             }
+            if (!res.data.length) {
+                toast(i18n.noUnused, 'success');
+                return;
+            }
+            var category = i18n.categories[state.type] || i18n.categories.all;
+            if (confirm(sprintf(i18n.confirmAll, res.data.length, category))) {
+                runDelete(res.data, false);
+            }
+        }).fail(function () {
+            toast(i18n.error, 'error');
         });
     }
 
-    function deleteBatch(ids, offset, $btn) {
-        var batchSize = 20;
-        var batch = ids.slice(offset, offset + batchSize);
+    /**
+     * Delete in batches of 20 so large selections don't time out.
+     */
+    function runDelete(ids, force) {
+        state.busy = true;
+        updateDeleteButtons();
 
-        if (!batch.length) {
-            toast('All unused media deleted!', 'success');
-            $btn.prop('disabled', false).text('Delete All Unused');
-            state.selected = [];
-            loadResults();
-            refreshSummary();
-            return;
+        var deleted = 0;
+        var skipped = 0;
+        var offset  = 0;
+
+        function next() {
+            var batch = ids.slice(offset, offset + 20);
+            if (!batch.length) {
+                done();
+                return;
+            }
+            $('#mj-scan-status').text(sprintf(i18n.deletingProgress, Math.min(offset + batch.length, ids.length), ids.length));
+
+            $.post(cfg.ajaxUrl, {
+                action: 'media_janitor_delete',
+                nonce:  cfg.nonce,
+                ids:    batch,
+                force:  force ? 1 : 0
+            }).done(function (res) {
+                if (!res.success) {
+                    toast(typeof res.data === 'string' ? res.data : i18n.error, 'error');
+                    done();
+                    return;
+                }
+                deleted += res.data.deleted.length;
+                skipped += res.data.skipped.length;
+                offset  += batch.length;
+                next();
+            }).fail(function () {
+                toast(i18n.error, 'error');
+                done();
+            });
         }
 
-        $btn.text('Deleting ' + (offset + batch.length) + '/' + ids.length + '…');
+        function done() {
+            state.busy = false;
+            $('#mj-scan-status').text('');
+            clearSelection();
+            if (deleted) toast(sprintf(i18n.deleted, deleted), 'success');
+            if (skipped) toast(sprintf(i18n.skipped, skipped), 'error');
+            if (state.type === 'duplicates') {
+                loadDuplicates();
+            } else {
+                loadResults();
+            }
+            refreshSummary();
+        }
 
-        $.post(mjData.ajaxUrl, {
-            action: 'mj_delete',
-            nonce:  mjData.nonceDelete,
-            ids:    batch,
-        }).done(function () {
-            deleteBatch(ids, offset + batchSize, $btn);
-        }).fail(function () {
-            toast(mjData.i18n.error, 'error');
-            $btn.prop('disabled', false).text('Delete All Unused');
-        });
+        next();
     }
 
-    function refreshSummary() {
-        $.post(mjData.ajaxUrl, {
-            action: 'mj_scan',
-            nonce:  mjData.nonceScan,
-            offset: 0,
-        }).done(function (res) {
-            if (res.success && res.data.summary) {
-                renderSummary(res.data.summary);
-            }
-        });
+    function canDelete() {
+        return !state.busy && state.scanStatus === 'complete';
+    }
+
+    function updateDeleteButtons() {
+        var blocked = !canDelete();
+        $('#mj-delete-selected, #mj-dup-delete-selected').prop('disabled', blocked || state.selected.length === 0);
+        $('#mj-delete-all-unused').prop('disabled', blocked);
+    }
+
+    function clearSelection() {
+        state.selected = [];
+        $('.mj-item__check').prop('checked', false);
+        $('.mj-item--selected').removeClass('mj-item--selected');
+        updateDeleteButtons();
+    }
+
+    /* ----------------------------------------------------------------
+     *  Notices
+     * ----------------------------------------------------------------*/
+
+    function renderNotices() {
+        $notices.empty();
+
+        if (state.scanStatus === 'running' || state.scanStatus === 'aborted') {
+            addNotice(i18n.scanIncomplete, true);
+        } else if (cfg.newSinceLastScan > 0) {
+            addNotice(sprintf(i18n.newUploads, cfg.newSinceLastScan), true);
+        }
+        updateDeleteButtons();
+    }
+
+    function addNotice(text, withRescan) {
+        var $n = $('<div class="mj-new-uploads-notice"></div>')
+            .append('<span class="dashicons dashicons-info" style="margin-right:6px;color:var(--mj-accent);"></span>')
+            .append($('<span></span>').text(text));
+        if (withRescan) {
+            $n.append(' <button type="button" class="button button-small mj-rescan-btn" style="margin-left:8px;">' + escHtml(i18n.rescan) + '</button>');
+        }
+        $notices.append($n);
     }
 
     /* ----------------------------------------------------------------
      *  Helpers
      * ----------------------------------------------------------------*/
 
-    function showNewUploadsNotice(count) {
-        var $notice = $(
-            '<div class="mj-new-uploads-notice">' +
-            '<span class="dashicons dashicons-info" style="margin-right:6px;color:var(--mj-accent);"></span>' +
-            '<strong>' + count + ' new file' + (count > 1 ? 's' : '') + '</strong> uploaded since last scan — results may be incomplete.' +
-            ' <button class="button button-small" id="mj-rescan-btn" style="margin-left:8px;">Rescan now</button>' +
-            '</div>'
-        );
-        $results.before($notice);
-        $notice.find('#mj-rescan-btn').on('click', function () {
-            $notice.remove();
-            $('#mj-scan-btn').trigger('click');
-        });
+    function setActiveTab(type) {
+        $('.mj-tab').removeClass('mj-tab--active').attr('aria-selected', 'false');
+        $('.mj-tab[data-type="' + type + '"]').addClass('mj-tab--active').attr('aria-selected', 'true');
     }
 
-    function updateDeleteBtn() {
-        var disabled = state.selected.length === 0;
-        $('#mj-delete-selected').prop('disabled', disabled);
-        $('#mj-dup-delete-selected').prop('disabled', disabled);
+    function findItem(id, pool) {
+        var list = pool || state.items.concat(state.dupItems);
+        for (var i = 0; i < list.length; i++) {
+            if (list[i].id === id) return list[i];
+        }
+        return null;
+    }
+
+    function isSelected(id) {
+        return state.selected.indexOf(id) !== -1;
+    }
+
+    function checkboxHtml(item) {
+        return '<input type="checkbox" class="mj-item__check" value="' + item.id + '"' + (isSelected(item.id) ? ' checked' : '') +
+            ' aria-label="' + escHtml(item.filename) + '">';
+    }
+
+    function thumbHtml(item) {
+        return item.thumb
+            ? '<img src="' + escHtml(item.thumb) + '" alt="" loading="lazy">'
+            : '<span class="dashicons ' + getIcon(item.category) + '"></span>';
+    }
+
+    function badgeHtml(item) {
+        return '<span class="mj-item__badge ' + (item.used ? 'mj-item__badge--used' : 'mj-item__badge--unused') + '">' +
+            escHtml(item.used ? i18n.used : i18n.unused) + '</span>';
+    }
+
+    function usageBtnHtml(item) {
+        return '<button type="button" class="mj-item__usage-btn" data-id="' + item.id + '">' + escHtml(sprintf(item.usage.length === 1 ? i18n.reference : i18n.references, item.usage.length)) + '</button>';
     }
 
     function updateProgress(pct, text) {
@@ -712,9 +761,8 @@
     }
 
     function showLastScan() {
-        if (mjData.lastScan > 0) {
-            var d = new Date(mjData.lastScan * 1000);
-            $('#mj-last-scan').text('Last scan: ' + d.toLocaleString());
+        if (cfg.lastScan > 0) {
+            $('#mj-last-scan').text(sprintf(i18n.lastScan, new Date(cfg.lastScan * 1000).toLocaleString()));
         }
     }
 
@@ -729,30 +777,15 @@
     }
 
     function formatSourceType(type) {
-        var map = {
-            'page':           'Page',
-            'post':           'Post',
-            'product':        'Product',
-            'featured_image': 'Featured Image',
-            'woo_gallery':    'Product Gallery',
-            'widget':         'Widget',
-            'theme_mod':      'Customizer',
-            'option':         'Site Option',
-            'nav_menu':       'Menu',
-            'elementor':      'Elementor',
-            'custom_css':     'Custom CSS',
-        };
-
         if (type.indexOf('meta:') === 0) {
-            return 'Meta: ' + type.substring(5);
+            return sprintf(i18n.customField, type.substring(5));
         }
-
-        return map[type] || type;
+        return i18n.sourceTypes[type] || type;
     }
 
     function humanSize(bytes) {
         if (!bytes) return '0 B';
-        var units = ['B', 'KB', 'MB', 'GB'];
+        var units = ['B', 'KB', 'MB', 'GB', 'TB'];
         var i = 0;
         while (bytes >= 1024 && i < units.length - 1) {
             bytes /= 1024;
@@ -761,17 +794,33 @@
         return bytes.toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
     }
 
+    /**
+     * Minimal sprintf for translated strings: %s, %d and positional %1$s / %2$d.
+     */
+    function sprintf(format) {
+        var args = Array.prototype.slice.call(arguments, 1);
+        var next = 0;
+        return String(format).replace(/%(?:(\d+)\$)?([sd])/g, function (m, pos) {
+            var value = pos ? args[parseInt(pos, 10) - 1] : args[next++];
+            return value === undefined ? m : String(value);
+        });
+    }
+
     function escHtml(str) {
-        if (!str) return '';
+        if (str === null || str === undefined) return '';
         var div = document.createElement('div');
-        div.appendChild(document.createTextNode(str));
-        return div.innerHTML;
+        div.appendChild(document.createTextNode(String(str)));
+        return div.innerHTML.replace(/"/g, '&quot;');
     }
 
     function toast(message, type) {
-        var $t = $('<div class="mj-toast mj-toast--' + (type || 'success') + '">' + escHtml(message) + '</div>');
-        $('body').append($t);
-        setTimeout(function () { $t.fadeOut(300, function () { $t.remove(); }); }, 3500);
+        var $stack = $('.mj-toasts');
+        if (!$stack.length) {
+            $stack = $('<div class="mj-toasts" aria-live="polite"></div>').appendTo('body');
+        }
+        var $t = $('<div class="mj-toast mj-toast--' + (type || 'success') + '"></div>').text(message);
+        $stack.append($t);
+        setTimeout(function () { $t.fadeOut(300, function () { $t.remove(); }); }, 5000);
     }
 
 })(jQuery);

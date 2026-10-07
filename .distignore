@@ -1,0 +1,9 @@
+.git
+.gitattributes
+.gitignore
+.mailmap
+.distignore
+.claude
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
+README.md

@@ -1,78 +1,85 @@
 <?php
 /**
- * Plugin Name: Media Janitor
- * Plugin URI:  https://github.com/wisnuub/media-janitor
- * Description: Find and safely remove unused media files. Scans all pages, posts, widgets, theme settings, and page builders to identify where each media file is used — so you can clean up with confidence.
- * Version:     1.0
- * Author:      Wisnu
- * Author URI:  https://github.com/wisnuub
- * License:     GPL-2.0-or-later
- * License URI: https://www.gnu.org/licenses/gpl-2.0.html
- * Text Domain: media-janitor
+ * Plugin Name:       Media Janitor
+ * Plugin URI:        https://github.com/wisnuub/media-janitor
+ * Description:       Find and safely remove unused media files. Scans pages, posts, custom fields, widgets, theme settings and page builders to show exactly where each file is used — so you can clean up with confidence.
+ * Version:           1.1.0
+ * Author:            Wisnu A. Kurniawan
+ * Author URI:        https://github.com/wisnuub
+ * License:           GPL-2.0-or-later
+ * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
+ * Text Domain:       media-janitor
  * Requires at least: 5.8
- * Requires PHP: 7.4
+ * Requires PHP:      7.4
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'JEJEKIN_MJ_VERSION', '1.0' );
-define( 'JEJEKIN_MJ_FILE', __FILE__ );
-define( 'JEJEKIN_MJ_DIR', plugin_dir_path( __FILE__ ) );
-define( 'JEJEKIN_MJ_URL', plugin_dir_url( __FILE__ ) );
-define( 'JEJEKIN_MJ_BASENAME', plugin_basename( __FILE__ ) );
+define( 'MEDIA_JANITOR_VERSION', '1.1.0' );
+define( 'MEDIA_JANITOR_DB_VERSION', '1.1' );
+define( 'MEDIA_JANITOR_FILE', __FILE__ );
+define( 'MEDIA_JANITOR_DIR', plugin_dir_path( __FILE__ ) );
+define( 'MEDIA_JANITOR_URL', plugin_dir_url( __FILE__ ) );
+define( 'MEDIA_JANITOR_BASENAME', plugin_basename( __FILE__ ) );
 
-require_once JEJEKIN_MJ_DIR . 'includes/class-media-janitor-scanner.php';
-require_once JEJEKIN_MJ_DIR . 'includes/class-media-janitor-admin.php';
-require_once JEJEKIN_MJ_DIR . 'includes/class-media-janitor-ajax.php';
+require_once MEDIA_JANITOR_DIR . 'includes/class-media-janitor-scanner.php';
+require_once MEDIA_JANITOR_DIR . 'includes/class-media-janitor-admin.php';
+require_once MEDIA_JANITOR_DIR . 'includes/class-media-janitor-ajax.php';
 
 /**
  * Initialize the plugin.
  */
-function jejekin_mj_init() {
+function media_janitor_init() {
+    media_janitor_maybe_upgrade();
+
     if ( is_admin() ) {
         new Media_Janitor_Admin();
         new Media_Janitor_Ajax();
     }
 }
-add_action( 'plugins_loaded', 'jejekin_mj_init' );
+add_action( 'plugins_loaded', 'media_janitor_init' );
 
 /**
- * Enqueue the frontend highlighter script when ?mj_highlight is present.
- * Only loads for logged-in admins previewing where media is used.
+ * Enqueue the frontend highlighter when an admin opens "Find on page".
  */
-function jejekin_mj_frontend_highlighter() {
-    if ( ! isset( $_GET['mj_highlight'] ) || ! current_user_can( 'manage_options' ) ) {
+function media_janitor_frontend_highlighter() {
+    // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only display flag.
+    if ( ! isset( $_GET['media_janitor_highlight'] ) || ! current_user_can( 'manage_options' ) ) {
         return;
     }
 
     wp_enqueue_script(
         'media-janitor-highlighter',
-        JEJEKIN_MJ_URL . 'assets/js/highlighter.js',
+        MEDIA_JANITOR_URL . 'assets/js/highlighter.js',
         array(),
-        JEJEKIN_MJ_VERSION,
+        MEDIA_JANITOR_VERSION,
         true
     );
 }
-add_action( 'wp_enqueue_scripts', 'jejekin_mj_frontend_highlighter' );
+add_action( 'wp_enqueue_scripts', 'media_janitor_frontend_highlighter' );
 
 /**
- * Clear the cached dHash whenever WordPress regenerates attachment metadata
- * (e.g. after a file replacement), so stale hashes don't persist.
+ * Drop cached hashes when an attachment's file is regenerated or replaced.
+ *
+ * @param mixed $data          Attachment metadata.
+ * @param int   $attachment_id Attachment ID.
+ * @return mixed
  */
-add_filter( 'wp_update_attachment_metadata', function ( array $data, int $attachment_id ): array {
-    delete_post_meta( $attachment_id, '_mj_dhash' );
+function media_janitor_clear_hash( $data, $attachment_id ) {
+    delete_post_meta( (int) $attachment_id, Media_Janitor_Scanner::HASH_META );
     return $data;
-}, 10, 2 );
+}
+add_filter( 'wp_update_attachment_metadata', 'media_janitor_clear_hash', 10, 2 );
 
 /**
- * Activation hook — create the usage reference table.
+ * Create or update the usage reference table.
  */
-function jejekin_mj_activate() {
+function media_janitor_install() {
     global $wpdb;
 
-    $table   = $wpdb->prefix . 'mj_media_usage';
+    $table   = Media_Janitor_Scanner::table_name();
     $charset = $wpdb->get_charset_collate();
 
     $sql = "CREATE TABLE $table (
@@ -82,7 +89,7 @@ function jejekin_mj_activate() {
         source_id bigint(20) unsigned NOT NULL DEFAULT 0,
         source_label text NOT NULL,
         source_url varchar(2083) NOT NULL DEFAULT '',
-        PRIMARY KEY (id),
+        PRIMARY KEY  (id),
         KEY attachment_id (attachment_id),
         KEY source_type (source_type)
     ) $charset;";
@@ -90,15 +97,38 @@ function jejekin_mj_activate() {
     require_once ABSPATH . 'wp-admin/includes/upgrade.php';
     dbDelta( $sql );
 
-    update_option( 'mj_db_version', '1.0' );
-    update_option( 'mj_last_scan', 0 );
+    update_option( 'media_janitor_db_version', MEDIA_JANITOR_DB_VERSION );
 }
-register_activation_hook( __FILE__, 'jejekin_mj_activate' );
+register_activation_hook( __FILE__, 'media_janitor_install' );
 
 /**
- * Deactivation hook — clean up transients.
+ * Activation hooks don't run on updates, so install/migrate on version change.
  */
-function jejekin_mj_deactivate() {
+function media_janitor_maybe_upgrade() {
+    if ( get_option( 'media_janitor_db_version' ) === MEDIA_JANITOR_DB_VERSION ) {
+        return;
+    }
+
+    media_janitor_install();
+
+    // 1.0 used short "mj_" names; drop them. A fresh scan is required anyway.
+    global $wpdb;
+    $wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}mj_media_usage" ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- removing the 1.0 table.
+    foreach ( array( 'mj_db_version', 'mj_last_scan', 'mj_duplicates' ) as $old_option ) {
+        delete_option( $old_option );
+    }
     delete_transient( 'mj_scan_progress' );
+    delete_post_meta_by_key( '_mj_dhash' );
 }
-register_deactivation_hook( __FILE__, 'jejekin_mj_deactivate' );
+
+/**
+ * Deactivation — nothing persistent to undo; data is removed on uninstall.
+ */
+function media_janitor_deactivate() {
+    $state = Media_Janitor_Scanner::get_state();
+    if ( 'running' === $state['status'] ) {
+        $state['status'] = 'aborted';
+        update_option( Media_Janitor_Scanner::STATE_OPTION, $state, false );
+    }
+}
+register_deactivation_hook( __FILE__, 'media_janitor_deactivate' );

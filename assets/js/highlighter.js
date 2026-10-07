@@ -1,7 +1,7 @@
 /**
  * Media Janitor — Frontend Highlighter
  *
- * When a page is loaded with ?mj_highlight=<filename>, this script:
+ * When a page is loaded with ?media_janitor_highlight=<filename>, this script:
  * 1. Finds all elements referencing that media file (img, video, audio, a[href], background-image)
  * 2. Scrolls to the first match
  * 3. Adds a pulsing highlight border so the user can instantly see where the media is used
@@ -11,7 +11,7 @@
     'use strict';
 
     var params   = new URLSearchParams(window.location.search);
-    var filename = params.get('mj_highlight');
+    var filename = params.get('media_janitor_highlight');
     if (!filename) return;
 
     injectStyles();

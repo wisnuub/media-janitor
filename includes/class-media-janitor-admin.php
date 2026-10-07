@@ -12,7 +12,7 @@ class Media_Janitor_Admin {
     public function __construct() {
         add_action( 'admin_menu', array( $this, 'add_menu' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
-        add_filter( 'plugin_action_links_' . JEJEKIN_MJ_BASENAME, array( $this, 'action_links' ) );
+        add_filter( 'plugin_action_links_' . MEDIA_JANITOR_BASENAME, array( $this, 'action_links' ) );
     }
 
     /**
@@ -48,23 +48,25 @@ class Media_Janitor_Admin {
 
         wp_enqueue_style(
             'media-janitor-admin',
-            JEJEKIN_MJ_URL . 'assets/css/admin.css',
+            MEDIA_JANITOR_URL . 'assets/css/admin.css',
             array(),
-            JEJEKIN_MJ_VERSION
+            MEDIA_JANITOR_VERSION
         );
 
         wp_enqueue_script(
             'media-janitor-admin',
-            JEJEKIN_MJ_URL . 'assets/js/admin.js',
+            MEDIA_JANITOR_URL . 'assets/js/admin.js',
             array( 'jquery' ),
-            JEJEKIN_MJ_VERSION,
+            MEDIA_JANITOR_VERSION,
             true
         );
 
-        $last_scan = (int) get_option( 'mj_last_scan', 0 );
+        $state     = Media_Janitor_Scanner::get_state();
+        $last_scan = (int) get_option( 'media_janitor_last_scan', 0 );
         $new_since = 0;
         if ( $last_scan > 0 ) {
             global $wpdb;
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- one-off count shown on the admin page.
             $new_since = (int) $wpdb->get_var( $wpdb->prepare(
                 "SELECT COUNT(*) FROM {$wpdb->posts}
                  WHERE post_type = 'attachment' AND post_status = 'inherit'
@@ -73,27 +75,96 @@ class Media_Janitor_Admin {
             ) );
         }
 
-        wp_localize_script( 'media-janitor-admin', 'mjData', array(
+        wp_localize_script( 'media-janitor-admin', 'mediaJanitor', array(
             'ajaxUrl'          => admin_url( 'admin-ajax.php' ),
-            'nonceScan'        => wp_create_nonce( 'mj_scan' ),
-            'nonceResults'     => wp_create_nonce( 'mj_results' ),
-            'nonceDelete'      => wp_create_nonce( 'mj_delete' ),
-            'nonceDuplicates'  => wp_create_nonce( 'mj_duplicates' ),
+            'nonce'            => wp_create_nonce( 'media_janitor' ),
+            'scanStatus'       => $state['status'],
             'lastScan'         => $last_scan,
             'newSinceLastScan' => $new_since,
-            'i18n'        => array(
-                'scanning'            => __( 'Scanning…', 'media-janitor' ),
-                'scanComplete'        => __( 'Scan complete!', 'media-janitor' ),
-                'confirmDelete'       => __( 'Are you sure you want to permanently delete the selected media files? This cannot be undone.', 'media-janitor' ),
-                'confirmAll'          => __( 'Are you sure you want to permanently delete ALL unused media files? This cannot be undone.', 'media-janitor' ),
-                'deleting'            => __( 'Deleting…', 'media-janitor' ),
-                'deleted'             => __( 'Deleted successfully.', 'media-janitor' ),
-                'noUnused'            => __( 'No unused media found. Your library is clean!', 'media-janitor' ),
-                'error'               => __( 'An error occurred. Please try again.', 'media-janitor' ),
-                'scanningDuplicates'  => __( 'Scanning for duplicates…', 'media-janitor' ),
-                'dupScanComplete'     => __( 'Duplicate scan complete!', 'media-janitor' ),
-                'dupNotScanned'       => __( 'No duplicate scan run yet. Click "Scan for Duplicates" to begin.', 'media-janitor' ),
-                'dupNoneFound'        => __( 'None found.', 'media-janitor' ),
+            'i18n'             => array(
+                'scanning'         => __( 'Scanning…', 'media-janitor' ),
+                'scanStep'         => array(
+                    'content' => __( 'Scanning posts and pages…', 'media-janitor' ),
+                    'meta'    => __( 'Scanning custom fields and page builders…', 'media-janitor' ),
+                    'misc'    => __( 'Scanning widgets, menus and settings…', 'media-janitor' ),
+                ),
+                'scanComplete'     => __( 'Scan complete!', 'media-janitor' ),
+                'scanFailed'       => __( 'The scan stopped before finishing. Results are incomplete, so deleting is disabled until a full scan completes.', 'media-janitor' ),
+                'scanIncomplete'   => __( 'The last scan did not finish. Results are incomplete, so deleting is disabled.', 'media-janitor' ),
+                'rescan'           => __( 'Rescan now', 'media-janitor' ),
+                /* translators: %s: date and time */
+                'lastScan'         => __( 'Last scan: %s', 'media-janitor' ),
+                /* translators: %d: number of files */
+                'newUploads'       => __( '%d file(s) uploaded since the last scan — rescan to include them.', 'media-janitor' ),
+                /* translators: %d: number of files */
+                'confirmDelete'    => __( 'Permanently delete %d selected file(s)? This cannot be undone. Make sure you have a backup.', 'media-janitor' ),
+                /* translators: 1: number of files, 2: category name */
+                'confirmAll'       => __( 'Permanently delete all %1$d unused %2$s? This cannot be undone. Make sure you have a backup.', 'media-janitor' ),
+                /* translators: %d: number of files */
+                'confirmUsed'      => __( '%d of the selected files are still in use. Deleting them will break the pages that show them. Delete anyway?', 'media-janitor' ),
+                'deleting'         => __( 'Deleting…', 'media-janitor' ),
+                /* translators: 1: done, 2: total */
+                'deletingProgress' => __( 'Deleting %1$d / %2$d…', 'media-janitor' ),
+                /* translators: %d: number of files */
+                'deleted'          => __( '%d file(s) deleted.', 'media-janitor' ),
+                /* translators: %d: number of files */
+                'skipped'          => __( '%d file(s) were skipped because they are in use or were just added to content. Rescan to refresh.', 'media-janitor' ),
+                'deleteSelected'   => __( 'Delete Selected', 'media-janitor' ),
+                'deleteAllUnused'  => __( 'Delete All Unused', 'media-janitor' ),
+                'categories'       => array(
+                    'all'      => __( 'files', 'media-janitor' ),
+                    'image'    => __( 'images', 'media-janitor' ),
+                    'document' => __( 'documents', 'media-janitor' ),
+                    'video'    => __( 'videos', 'media-janitor' ),
+                    'audio'    => __( 'audio files', 'media-janitor' ),
+                ),
+                'noUnused'         => __( 'No unused media found. Your library is clean!', 'media-janitor' ),
+                'noUsed'           => __( 'No media in use found in this category.', 'media-janitor' ),
+                'noMatch'          => __( 'No files match your search.', 'media-janitor' ),
+                'noFiles'          => __( 'No files in this category.', 'media-janitor' ),
+                'error'            => __( 'An error occurred. Please try again.', 'media-janitor' ),
+                'used'             => __( 'Used', 'media-janitor' ),
+                'unused'           => __( 'Unused', 'media-janitor' ),
+                /* translators: %d: number of references (always 1) */
+                'reference'        => __( '%d reference', 'media-janitor' ),
+                /* translators: %d: number of references */
+                'references'       => __( '%d references', 'media-janitor' ),
+                'notUsedAnywhere'  => __( 'This file is not used anywhere the scanner can see. Files referenced only from theme code, hard-coded CSS or external sites are not detected.', 'media-janitor' ),
+                'findOnPage'       => __( 'Find on page', 'media-janitor' ),
+                'findOnPageTitle'  => __( 'Open the page and scroll to this file', 'media-janitor' ),
+                /* translators: %d: number of items */
+                'items'            => __( '%d items', 'media-janitor' ),
+                /* translators: 1: done, 2: total */
+                'hashing'          => __( 'Checking files %1$d / %2$d…', 'media-janitor' ),
+                'dupScanComplete'  => __( 'Duplicate scan complete!', 'media-janitor' ),
+                'dupNoneFound'     => __( 'None found.', 'media-janitor' ),
+                'visualSkipped'    => __( 'Visual matching was skipped because the library has too many images to compare in one go.', 'media-janitor' ),
+                /* translators: %d: group number */
+                'group'            => __( 'Group %d', 'media-janitor' ),
+                /* translators: %d: number of files */
+                'files'            => __( '%d files', 'media-janitor' ),
+                /* translators: %s: custom field name */
+                'customField'      => __( 'Custom field: %s', 'media-janitor' ),
+                'sourceTypes'      => array(
+                    'page'             => __( 'Page', 'media-janitor' ),
+                    'post'             => __( 'Post', 'media-janitor' ),
+                    'product'          => __( 'Product', 'media-janitor' ),
+                    'featured_image'   => __( 'Featured Image', 'media-janitor' ),
+                    'woo_gallery'      => __( 'Product Gallery', 'media-janitor' ),
+                    'widget'           => __( 'Widget', 'media-janitor' ),
+                    'theme_mod'        => __( 'Customizer', 'media-janitor' ),
+                    'option'           => __( 'Site Option', 'media-janitor' ),
+                    'nav_menu'         => __( 'Menu', 'media-janitor' ),
+                    'elementor'        => __( 'Elementor', 'media-janitor' ),
+                    'custom_css'       => __( 'Custom CSS', 'media-janitor' ),
+                    'term'             => __( 'Category / Term', 'media-janitor' ),
+                    'user'             => __( 'User Profile', 'media-janitor' ),
+                    'wp_block'         => __( 'Synced Pattern', 'media-janitor' ),
+                    'wp_template'      => __( 'Template', 'media-janitor' ),
+                    'wp_template_part' => __( 'Template Part', 'media-janitor' ),
+                    'wp_global_styles' => __( 'Global Styles', 'media-janitor' ),
+                    'wp_navigation'    => __( 'Navigation', 'media-janitor' ),
+                ),
             ),
         ) );
     }
@@ -113,9 +184,16 @@ class Media_Janitor_Admin {
                         <div class="mj-banner-title"><?php esc_html_e( 'Media Janitor', 'media-janitor' ); ?></div>
                         <div class="mj-banner-sub"><?php esc_html_e( 'Scan, audit, and clean up unused media files from your library', 'media-janitor' ); ?></div>
                     </div>
-                    <span class="mj-version-badge">v<?php echo esc_html( JEJEKIN_MJ_VERSION ); ?></span>
+                    <span class="mj-version-badge">v<?php echo esc_html( MEDIA_JANITOR_VERSION ); ?></span>
                 </div>
             </div>
+
+            <div class="mj-backup-note">
+                <span class="dashicons dashicons-warning"></span>
+                <?php esc_html_e( 'Deleted files cannot be recovered. Back up your site before deleting anything.', 'media-janitor' ); ?>
+            </div>
+
+            <div id="mj-notices"></div>
 
             <!-- Summary Cards -->
             <div id="mj-summary" class="mj-summary" style="display:none;">
@@ -227,7 +305,7 @@ class Media_Janitor_Admin {
 
                     <div id="mj-dup-loading" style="display:none;padding:20px 0;font-size:14px;color:#646970;">
                         <span class="spinner is-active" style="float:none;margin:0 8px 0 0;vertical-align:middle;"></span>
-                        <?php esc_html_e( 'Scanning…', 'media-janitor' ); ?>
+                        <span id="mj-dup-loading-text"><?php esc_html_e( 'Scanning…', 'media-janitor' ); ?></span>
                     </div>
 
                     <div id="mj-dup-not-scanned" class="mj-empty" style="display:none;">
@@ -261,6 +339,7 @@ class Media_Janitor_Admin {
                                 <span class="mj-tab__count" id="mj-dup-visual-count">0</span>
                             </div>
                             <p class="mj-dup-section__desc"><?php esc_html_e( 'Visually similar images regardless of filename — different format, resolution, or slight edits.', 'media-janitor' ); ?></p>
+                            <p id="mj-dup-visual-skipped" class="mj-dup-section__desc" style="display:none;"></p>
                             <div id="mj-dup-visual-groups"></div>
                         </div>
 
@@ -287,8 +366,8 @@ class Media_Janitor_Admin {
             <!-- Usage detail modal -->
             <div id="mj-modal" class="mj-modal" style="display:none;">
                 <div class="mj-modal__overlay"></div>
-                <div class="mj-modal__content">
-                    <button class="mj-modal__close">&times;</button>
+                <div class="mj-modal__content" role="dialog" aria-modal="true" aria-labelledby="mj-modal-title">
+                    <button type="button" class="mj-modal__close" aria-label="<?php esc_attr_e( 'Close', 'media-janitor' ); ?>">&times;</button>
                     <div class="mj-modal__header">
                         <div class="mj-modal__thumb" id="mj-modal-thumb"></div>
                         <div class="mj-modal__info">
