@@ -1074,7 +1074,9 @@ class Media_Janitor_Scanner {
             $out = array();
             foreach ( $groups as $ids ) {
                 $ids = array_values( array_filter( $ids, function ( int $id ): bool {
-                    return 'attachment' === get_post_type( $id );
+                    $post = get_post( $id );
+                    // get_post_status() reports an attachment's parent status, so read the row itself.
+                    return $post && 'attachment' === $post->post_type && 'inherit' === $post->post_status;
                 } ) );
                 if ( count( $ids ) > 1 ) {
                     $out[] = array_map( array( $this, 'build_item' ), $ids );

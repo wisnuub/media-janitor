@@ -75,7 +75,7 @@ class Media_Janitor_Admin {
             ) );
         }
 
-        wp_localize_script( 'media-janitor-admin', 'mediaJanitor', array(
+        $data = array(
             'ajaxUrl'          => admin_url( 'admin-ajax.php' ),
             'nonce'            => wp_create_nonce( 'media_janitor' ),
             'scanStatus'       => $state['status'],
@@ -166,7 +166,19 @@ class Media_Janitor_Admin {
                     'wp_navigation'    => __( 'Navigation', 'media-janitor' ),
                 ),
             ),
-        ) );
+        );
+
+        /**
+         * Filters the data passed to the Media Janitor admin script (strings, settings).
+         *
+         * @param array $data Localized data.
+         */
+        wp_localize_script( 'media-janitor-admin', 'mediaJanitor', apply_filters( 'media_janitor_admin_data', $data ) );
+
+        /**
+         * Fires after Media Janitor's admin assets are enqueued, so add-ons can add their own.
+         */
+        do_action( 'media_janitor_enqueue_assets' );
     }
 
     /**

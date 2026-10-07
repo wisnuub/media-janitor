@@ -146,7 +146,19 @@ class Media_Janitor_Ajax {
                 }
             }
 
-            if ( wp_delete_attachment( $id, true ) ) {
+            /**
+             * Short-circuit deletion, e.g. to move the file to a quarantine instead.
+             *
+             * @param null|bool|WP_Error $handled Null to delete normally; true if handled; WP_Error to skip.
+             * @param int                $id      Attachment ID.
+             */
+            $handled = apply_filters( 'media_janitor_pre_delete', null, $id );
+            if ( is_wp_error( $handled ) ) {
+                $skipped[] = array( 'id' => $id, 'reason' => $handled->get_error_message() );
+                continue;
+            }
+
+            if ( true === $handled || wp_delete_attachment( $id, true ) ) {
                 $wpdb->delete( Media_Janitor_Scanner::table_name(), array( 'attachment_id' => $id ), array( '%d' ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- plugin's own table.
                 $deleted[] = $id;
             } else {
