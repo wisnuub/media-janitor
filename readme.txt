@@ -13,7 +13,7 @@ Find unused and duplicate media, see exactly where every file is used, and clean
 
 == Description ==
 
-Media Janitor scans your whole site to work out which media files are actually used — and **where**. Instead of a bare "unused" label, every file shows the pages, products, widgets and settings that reference it, with a **Find on page** button that opens the page, scrolls to the image and highlights it.
+Media Janitor scans your whole site to work out which media files are actually used, and **where**. Instead of a bare "unused" label, every file shows the pages, products, widgets and settings that reference it, with a **Find on page** button that opens the page, scrolls to the image and highlights it.
 
 **Please back up your site before deleting anything. Deleted files cannot be recovered.**
 
@@ -31,7 +31,7 @@ Media Janitor scans your whole site to work out which media files are actually u
 
 = Safety first =
 
-* Scans run in small steps, so large libraries never time out — and deleting stays disabled until a scan has fully finished.
+* Scans run in small steps, so large libraries never time out, and deleting stays disabled until a scan has fully finished.
 * Files the scan found in use are never deleted by "Delete All Unused".
 * Right before deleting, Media Janitor re-checks content edited since the scan, so an image you just added to a page is skipped.
 * Every delete asks for confirmation.
@@ -40,9 +40,9 @@ Media Janitor scans your whole site to work out which media files are actually u
 
 The Duplicates tab finds:
 
-* **Exact duplicates** — byte-identical files uploaded more than once
-* **Scale variants** — `icon.png`, `icon@2x.png`, `icon-3x.png`
-* **Visual duplicates** — the same picture in a different size, format or with small edits
+* **Exact duplicates:** byte-identical files uploaded more than once
+* **Scale variants:** `icon.png`, `icon@2x.png`, `icon-3x.png`
+* **Visual duplicates:** the same picture in a different size, format or with small edits
 
 Each file shows whether it is used, so you can keep the one your pages rely on.
 
