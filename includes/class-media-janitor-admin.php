@@ -202,7 +202,11 @@ class Media_Janitor_Admin {
 
             <div class="mj-backup-note">
                 <span class="dashicons dashicons-warning"></span>
-                <?php esc_html_e( 'Deleted files cannot be recovered. Back up your site before deleting anything.', 'media-janitor' ); ?>
+                <span>
+                    <?php esc_html_e( 'Deleted files cannot be recovered. Back up your site before deleting anything.', 'media-janitor' ); ?>
+                    <?php esc_html_e( 'Want an undo? Media Janitor Pro keeps removed files for 30 days so you can restore them.', 'media-janitor' ); ?>
+                    <a href="<?php echo esc_url( MEDIA_JANITOR_PRO_URL ); ?>" target="_blank" rel="noopener"><?php esc_html_e( 'Get Pro', 'media-janitor' ); ?></a>
+                </span>
             </div>
 
             <div id="mj-notices"></div>

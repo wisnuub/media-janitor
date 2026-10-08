@@ -46,6 +46,15 @@ The Duplicates tab finds:
 
 Each file shows whether it is used, so you can keep the one your pages rely on.
 
+= Media Janitor Pro =
+
+Want an undo? [Media Janitor Pro](https://checkout.freemius.com/plugin/40992/plan/71073/) is an optional paid add-on:
+
+* **Quarantine instead of permanent delete:** removed files are kept for 30 days and can be restored with one click.
+* **Merge duplicates:** keep one copy and every page, featured image and gallery that used the others is updated automatically.
+
+Everything described above works without it.
+
 = What it can't see =
 
 Files referenced only from theme or plugin PHP code, hard-coded in theme CSS files, or linked from other websites are not detected. Check the "Find on page" result before deleting anything you are unsure about.

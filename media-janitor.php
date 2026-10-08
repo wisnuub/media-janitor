@@ -23,6 +23,7 @@ define( 'MEDIA_JANITOR_FILE', __FILE__ );
 define( 'MEDIA_JANITOR_DIR', plugin_dir_path( __FILE__ ) );
 define( 'MEDIA_JANITOR_URL', plugin_dir_url( __FILE__ ) );
 define( 'MEDIA_JANITOR_BASENAME', plugin_basename( __FILE__ ) );
+define( 'MEDIA_JANITOR_PRO_URL', 'https://checkout.freemius.com/plugin/40992/plan/71073/' );
 
 require_once MEDIA_JANITOR_DIR . 'includes/class-media-janitor-scanner.php';
 require_once MEDIA_JANITOR_DIR . 'includes/class-media-janitor-admin.php';
@@ -142,6 +143,7 @@ register_deactivation_hook( __FILE__, 'media_janitor_deactivate' );
  */
 function media_janitor_donate_link( $links, $file ) {
     if ( plugin_basename( __FILE__ ) === $file ) {
+        $links[] = '<a href="' . esc_url( MEDIA_JANITOR_PRO_URL ) . '" target="_blank" rel="noopener">' . esc_html__( 'Get Pro', 'media-janitor' ) . '</a>';
         $links[] = '<a href="https://paypal.me/toast415" target="_blank" rel="noopener">' . esc_html__( 'Donate', 'media-janitor' ) . '</a>';
     }
     return $links;
