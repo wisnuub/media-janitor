@@ -199,6 +199,8 @@ class Media_Janitor_Admin {
                     <span class="mj-version-badge">v<?php echo esc_html( MEDIA_JANITOR_VERSION ); ?></span>
                 </div>
             </div>
+            <?php // Admin notices go here; otherwise core moves them after the first <h2>, which is the hidden usage modal's title. ?>
+            <hr class="wp-header-end">
 
             <div class="mj-backup-note">
                 <span class="dashicons dashicons-warning"></span>
