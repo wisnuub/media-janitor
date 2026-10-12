@@ -1,4 +1,4 @@
-=== Media Janitor ===
+=== Wisnoob Media Cleanup ===
 Contributors: wisnoob
 Donate link: https://paypal.me/toast415
 Tags: media, unused media, cleanup, duplicate images, media library
@@ -13,7 +13,7 @@ Find unused and duplicate media, see exactly where every file is used, and clean
 
 == Description ==
 
-Media Janitor scans your whole site to work out which media files are actually used, and **where**. Instead of a bare "unused" label, every file shows the pages, products, widgets and settings that reference it, with a **Find on page** button that opens the page, scrolls to the image and highlights it.
+Wisnoob Media Cleanup scans your whole site to work out which media files are actually used, and **where**. Instead of a bare "unused" label, every file shows the pages, products, widgets and settings that reference it, with a **Find on page** button that opens the page, scrolls to the image and highlights it.
 
 **Please back up your site before deleting anything. Deleted files cannot be recovered.**
 
@@ -33,7 +33,7 @@ Media Janitor scans your whole site to work out which media files are actually u
 
 * Scans run in small steps, so large libraries never time out, and deleting stays disabled until a scan has fully finished.
 * Files the scan found in use are never deleted by "Delete All Unused".
-* Right before deleting, Media Janitor re-checks content edited since the scan, so an image you just added to a page is skipped.
+* Right before deleting, Wisnoob Media Cleanup re-checks content edited since the scan, so an image you just added to a page is skipped.
 * Every delete asks for confirmation.
 
 = Duplicate finder =
@@ -46,9 +46,9 @@ The Duplicates tab finds:
 
 Each file shows whether it is used, so you can keep the one your pages rely on.
 
-= Media Janitor Pro =
+= Wisnoob Media Cleanup Pro =
 
-Want an undo? [Media Janitor Pro](https://checkout.freemius.com/plugin/40992/plan/71073/) is an optional paid add-on:
+Want an undo? [Wisnoob Media Cleanup Pro](https://checkout.freemius.com/plugin/40992/plan/71073/) is an optional paid add-on:
 
 * **Quarantine instead of permanent delete:** removed files are kept for 30 days and can be restored with one click.
 * **Merge duplicates:** keep one copy and every page, featured image and gallery that used the others is updated automatically.
@@ -61,15 +61,15 @@ Files referenced only from theme or plugin PHP code, hard-coded in theme CSS fil
 
 == Installation ==
 
-1. Upload the plugin to `/wp-content/plugins/media-janitor/`, or install it from **Plugins → Add New**.
+1. Upload the plugin to `/wp-content/plugins/wisnoob-media-cleanup/`, or install it from **Plugins → Add New**.
 2. Activate it.
-3. Go to **Media → Media Janitor** and click **Scan Media Library**.
+3. Go to **Media → Wisnoob Media Cleanup** and click **Scan Media Library**.
 
 == Frequently Asked Questions ==
 
 = Is it safe? =
 
-Media Janitor only deletes files you select, after confirming, and only after a complete scan. It cannot see every possible reference (see "What it can't see"), so always keep a backup.
+Wisnoob Media Cleanup only deletes files you select, after confirming, and only after a complete scan. It cannot see every possible reference (see "What it can't see"), so always keep a backup.
 
 = Does it work with page builders? =
 
@@ -77,11 +77,11 @@ Elementor is scanned directly. Gutenberg, Classic Editor, WPBakery and Divi cont
 
 = Will it slow down my site? =
 
-No. Scanning only happens when you click Scan in the admin. Nothing runs on the front end except the "Find on page" highlighter, and only for logged-in administrators who opened a page from Media Janitor.
+No. Scanning only happens when you click Scan in the admin. Nothing runs on the front end except the "Find on page" highlighter, and only for logged-in administrators who opened a page from Wisnoob Media Cleanup.
 
 = What happens to my data if I uninstall? =
 
-Uninstalling removes Media Janitor's own table and settings. Your media files are not touched.
+Uninstalling removes Wisnoob Media Cleanup's own table and settings. Your media files are not touched.
 
 == Screenshots ==
 

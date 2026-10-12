@@ -1,4 +1,4 @@
-# Media Janitor
+# Wisnoob Media Cleanup
 
 > **v1.1.0** — Find and safely remove unused media files from your WordPress site.
 
@@ -33,7 +33,7 @@ Instead of blindly flagging media as "unused", the plugin:
 - Navigation arrows when multiple matches exist on a page
 - Summary dashboard with total, used, unused counts & recoverable space
 - Bulk delete selected or all unused media
-- Clean admin UI under **Media → Media Janitor**
+- Clean admin UI under **Media → Wisnoob Media Cleanup**
 
 ## Requirements
 
@@ -45,7 +45,7 @@ Instead of blindly flagging media as "unused", the plugin:
 1. Clone or download this repo
 2. Upload the folder to `/wp-content/plugins/`
 3. Activate in **Plugins**
-4. Go to **Media → Media Janitor** and hit **Scan Media Library**
+4. Go to **Media → Wisnoob Media Cleanup** and hit **Scan Media Library**
 
 ## Changelog
 

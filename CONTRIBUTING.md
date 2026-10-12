@@ -1,6 +1,6 @@
-# Contributing to Media Janitor
+# Contributing to Wisnoob Media Cleanup
 
-First off, thank you for taking the time to contribute to **Media Janitor**! 🎉 
+First off, thank you for taking the time to contribute to **Wisnoob Media Cleanup**! 🎉 
 
 Whether it's reporting a bug, discussing ideas, or submitting a Pull Request, your help is greatly appreciated to make this project better. This document provides guidelines and workflows for contributing to the repository.
 
@@ -32,7 +32,7 @@ If you find a bug, please check the [Issue Tracker](https://github.com/wisnuub/m
 We are always open to new ideas! Before submitting an enhancement request, please search the [Issue Tracker](https://github.com/wisnuub/media-janitor/issues) to ensure it hasn't been discussed yet.
 When suggesting a feature, provide:
 - A detailed description of the proposed functionality.
-- Why this feature would be useful for Media Janitor users.
+- Why this feature would be useful for Wisnoob Media Cleanup users.
 - Potential implementation ideas if you have them.
 
 ### Submitting Pull Requests
@@ -76,4 +76,4 @@ To ensure code consistency across the project, please adhere to the following co
 
 ---
 
-Thank you for helping improve **Media Janitor**! 🚀
+Thank you for helping improve **Wisnoob Media Cleanup**! 🚀

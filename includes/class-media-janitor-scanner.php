@@ -1,6 +1,6 @@
 <?php
 /**
- * Media Janitor — Scanner
+ * Wisnoob Media Cleanup — Scanner
  *
  * Builds a map of where every attachment is used. The scan runs in resumable,
  * time-boxed slices (one per AJAX request) so large sites never hit the PHP
@@ -467,7 +467,7 @@ class Media_Janitor_Scanner {
             }
 
             if ( 'nav_menu' === $type ) {
-                $label = sprintf( /* translators: %s: menu item title */ __( 'Menu Link: %s', 'media-janitor' ), $row->post_title ?: '#' . $post_id );
+                $label = sprintf( /* translators: %s: menu item title */ __( 'Menu Link: %s', 'wisnoob-media-cleanup' ), $row->post_title ?: '#' . $post_id );
                 $url   = admin_url( 'nav-menus.php' );
             } else {
                 $source = $this->describe_post( $row, $post_id );
@@ -515,7 +515,7 @@ class Media_Janitor_Scanner {
             if ( ! $ids ) {
                 continue;
             }
-            $label = sprintf( /* translators: 1: term name, 2: taxonomy */ __( 'Term: %1$s (%2$s)', 'media-janitor' ), $row->name, $row->taxonomy );
+            $label = sprintf( /* translators: 1: term name, 2: taxonomy */ __( 'Term: %1$s (%2$s)', 'wisnoob-media-cleanup' ), $row->name, $row->taxonomy );
             $url   = $row->taxonomy ? admin_url( 'term.php?taxonomy=' . rawurlencode( $row->taxonomy ) . '&tag_ID=' . (int) $row->term_id ) : '';
             foreach ( array_keys( $ids ) as $att_id ) {
                 $this->record_usage( $att_id, 'term', 0, $label, $url );
@@ -543,7 +543,7 @@ class Media_Janitor_Scanner {
                     $att_id,
                     'user',
                     0,
-                    sprintf( /* translators: %s: user display name */ __( 'User: %s', 'media-janitor' ), $row->display_name ),
+                    sprintf( /* translators: %s: user display name */ __( 'User: %s', 'wisnoob-media-cleanup' ), $row->display_name ),
                     admin_url( 'user-edit.php?user_id=' . (int) $row->user_id )
                 );
             }
@@ -564,7 +564,7 @@ class Media_Janitor_Scanner {
                     $att_id,
                     'widget',
                     0,
-                    sprintf( /* translators: %s: widget type */ __( 'Widget: %s', 'media-janitor' ), substr( $row->option_name, 7 ) ),
+                    sprintf( /* translators: %s: widget type */ __( 'Widget: %s', 'wisnoob-media-cleanup' ), substr( $row->option_name, 7 ) ),
                     admin_url( 'widgets.php' )
                 );
             }
@@ -586,7 +586,7 @@ class Media_Janitor_Scanner {
                 $ids += $this->find_url_ids( (string) wp_json_encode( $val ) );
             }
 
-            $label = 'custom_logo' === $key ? __( 'Site Logo', 'media-janitor' ) : sprintf( /* translators: %s: setting name */ __( 'Customizer: %s', 'media-janitor' ), $key );
+            $label = 'custom_logo' === $key ? __( 'Site Logo', 'wisnoob-media-cleanup' ) : sprintf( /* translators: %s: setting name */ __( 'Customizer: %s', 'wisnoob-media-cleanup' ), $key );
             foreach ( array_keys( $ids ) as $att_id ) {
                 $this->record_usage( $att_id, 'theme_mod', 0, $label, admin_url( 'customize.php' ) );
             }
@@ -619,12 +619,12 @@ class Media_Janitor_Scanner {
         foreach ( array_merge( $id_options, $url_options ) as $row ) {
             $ids = $this->find_ids_in_meta( (string) $row->option_name, (string) $row->option_value );
             $known = array(
-                'site_icon'                     => __( 'Site Icon', 'media-janitor' ),
-                'site_logo'                     => __( 'Site Logo', 'media-janitor' ),
-                'woocommerce_placeholder_image' => __( 'WooCommerce Placeholder Image', 'media-janitor' ),
+                'site_icon'                     => __( 'Site Icon', 'wisnoob-media-cleanup' ),
+                'site_logo'                     => __( 'Site Logo', 'wisnoob-media-cleanup' ),
+                'woocommerce_placeholder_image' => __( 'WooCommerce Placeholder Image', 'wisnoob-media-cleanup' ),
             );
             foreach ( array_keys( $ids ) as $att_id ) {
-                $label = $known[ $row->option_name ] ?? sprintf( /* translators: %s: option name */ __( 'Option: %s', 'media-janitor' ), $row->option_name );
+                $label = $known[ $row->option_name ] ?? sprintf( /* translators: %s: option name */ __( 'Option: %s', 'wisnoob-media-cleanup' ), $row->option_name );
                 $this->record_usage( $att_id, 'option', 0, $label, admin_url( 'options-general.php' ) );
             }
         }
@@ -1115,9 +1115,9 @@ class Media_Janitor_Scanner {
 
         switch ( $post->post_type ) {
             case 'custom_css':
-                return array( 'type' => 'custom_css', 'label' => __( 'Additional CSS', 'media-janitor' ), 'url' => admin_url( 'customize.php' ) );
+                return array( 'type' => 'custom_css', 'label' => __( 'Additional CSS', 'wisnoob-media-cleanup' ), 'url' => admin_url( 'customize.php' ) );
             case 'wp_global_styles':
-                return array( 'type' => 'wp_global_styles', 'label' => __( 'Global Styles', 'media-janitor' ), 'url' => admin_url( 'site-editor.php' ) );
+                return array( 'type' => 'wp_global_styles', 'label' => __( 'Global Styles', 'wisnoob-media-cleanup' ), 'url' => admin_url( 'site-editor.php' ) );
             case 'wp_template':
             case 'wp_template_part':
                 return array( 'type' => $post->post_type, 'label' => $title, 'url' => admin_url( 'site-editor.php' ) );

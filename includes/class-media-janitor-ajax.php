@@ -1,6 +1,6 @@
 <?php
 /**
- * Media Janitor — AJAX Handlers
+ * Wisnoob Media Cleanup — AJAX Handlers
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -22,7 +22,7 @@ class Media_Janitor_Ajax {
     private function authorize(): void {
         check_ajax_referer( 'media_janitor', 'nonce' );
         if ( ! current_user_can( 'manage_options' ) ) {
-            wp_send_json_error( __( 'You do not have permission to do this.', 'media-janitor' ), 403 );
+            wp_send_json_error( __( 'You do not have permission to do this.', 'wisnoob-media-cleanup' ), 403 );
         }
     }
 
@@ -111,7 +111,7 @@ class Media_Janitor_Ajax {
         $this->authorize();
 
         if ( ! Media_Janitor_Scanner::is_complete() ) {
-            wp_send_json_error( __( 'Run a full scan before deleting. The last scan did not finish, so its results are incomplete.', 'media-janitor' ) );
+            wp_send_json_error( __( 'Run a full scan before deleting. The last scan did not finish, so its results are incomplete.', 'wisnoob-media-cleanup' ) );
         }
 
         // phpcs:disable WordPress.Security.NonceVerification.Missing -- verified in authorize().
@@ -120,7 +120,7 @@ class Media_Janitor_Ajax {
         // phpcs:enable
 
         if ( empty( $ids ) ) {
-            wp_send_json_error( __( 'No files selected.', 'media-janitor' ) );
+            wp_send_json_error( __( 'No files selected.', 'wisnoob-media-cleanup' ) );
         }
 
         global $wpdb;
@@ -131,17 +131,17 @@ class Media_Janitor_Ajax {
         foreach ( $ids as $id ) {
             $post = get_post( $id );
             if ( ! $post || 'attachment' !== $post->post_type ) {
-                $skipped[] = array( 'id' => $id, 'reason' => __( 'not found', 'media-janitor' ) );
+                $skipped[] = array( 'id' => $id, 'reason' => __( 'not found', 'wisnoob-media-cleanup' ) );
                 continue;
             }
 
             if ( ! $force ) {
                 if ( $scanner->has_usage( $id ) ) {
-                    $skipped[] = array( 'id' => $id, 'reason' => __( 'in use', 'media-janitor' ) );
+                    $skipped[] = array( 'id' => $id, 'reason' => __( 'in use', 'wisnoob-media-cleanup' ) );
                     continue;
                 }
                 if ( $scanner->has_new_reference( $id ) ) {
-                    $skipped[] = array( 'id' => $id, 'reason' => __( 'used in content edited since the last scan', 'media-janitor' ) );
+                    $skipped[] = array( 'id' => $id, 'reason' => __( 'used in content edited since the last scan', 'wisnoob-media-cleanup' ) );
                     continue;
                 }
             }
@@ -162,7 +162,7 @@ class Media_Janitor_Ajax {
                 $wpdb->delete( Media_Janitor_Scanner::table_name(), array( 'attachment_id' => $id ), array( '%d' ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- plugin's own table.
                 $deleted[] = $id;
             } else {
-                $skipped[] = array( 'id' => $id, 'reason' => __( 'delete failed', 'media-janitor' ) );
+                $skipped[] = array( 'id' => $id, 'reason' => __( 'delete failed', 'wisnoob-media-cleanup' ) );
             }
         }
 

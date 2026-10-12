@@ -1,5 +1,5 @@
 /**
- * Media Janitor — Admin JavaScript
+ * Wisnoob Media Cleanup — Admin JavaScript
  */
 (function ($) {
     'use strict';

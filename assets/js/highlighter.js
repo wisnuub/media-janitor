@@ -1,5 +1,5 @@
 /**
- * Media Janitor — Frontend Highlighter
+ * Wisnoob Media Cleanup — Frontend Highlighter
  *
  * When a page is loaded with ?media_janitor_highlight=<filename>, this script:
  * 1. Finds all elements referencing that media file (img, video, audio, a[href], background-image)
@@ -182,7 +182,7 @@
                 '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;">' +
                 '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>' +
                 '</svg>' +
-                'Media Janitor</span>' +
+                'Wisnoob Media Cleanup</span>' +
                 (bare ? '<span class="mj-hl-filename" title="' + bare + '">' + bare + '</span>' : '') +
                 '<span class="mj-hl-counter">Match ' + (currentIndex + 1) + ' of ' + total + '</span>' +
                 (total > 1

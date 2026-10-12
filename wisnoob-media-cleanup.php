@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name:       Media Janitor
+ * Plugin Name:       Wisnoob Media Cleanup
  * Plugin URI:        https://github.com/wisnuub/media-janitor
  * Description:       Find and safely remove unused media files. Scans pages, posts, custom fields, widgets, theme settings and page builders to show exactly where each file is used — so you can clean up with confidence.
  * Version:           1.1.0
@@ -8,7 +8,7 @@
  * Author URI:        https://github.com/wisnuub
  * License:           GPL-2.0-or-later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
- * Text Domain:       media-janitor
+ * Text Domain:       wisnoob-media-cleanup
  * Requires at least: 5.8
  * Requires PHP:      7.4
  */
@@ -143,8 +143,8 @@ register_deactivation_hook( __FILE__, 'media_janitor_deactivate' );
  */
 function media_janitor_donate_link( $links, $file ) {
     if ( plugin_basename( __FILE__ ) === $file ) {
-        $links[] = '<a href="' . esc_url( MEDIA_JANITOR_PRO_URL ) . '" target="_blank" rel="noopener">' . esc_html__( 'Get Pro', 'media-janitor' ) . '</a>';
-        $links[] = '<a href="https://paypal.me/toast415" target="_blank" rel="noopener">' . esc_html__( 'Donate', 'media-janitor' ) . '</a>';
+        $links[] = '<a href="' . esc_url( MEDIA_JANITOR_PRO_URL ) . '" target="_blank" rel="noopener">' . esc_html__( 'Get Pro', 'wisnoob-media-cleanup' ) . '</a>';
+        $links[] = '<a href="https://paypal.me/toast415" target="_blank" rel="noopener">' . esc_html__( 'Donate', 'wisnoob-media-cleanup' ) . '</a>';
     }
     return $links;
 }

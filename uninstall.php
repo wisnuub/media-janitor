@@ -1,6 +1,6 @@
 <?php
 /**
- * Media Janitor — remove everything the plugin stored. Media files are untouched.
+ * Wisnoob Media Cleanup — remove everything the plugin stored. Media files are untouched.
  */
 
 if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
